@@ -27,7 +27,7 @@ import java.util.Locale;
  * Control Center -> Screen Mirroring list; mirrored video is shown here.
  */
 public class MainActivity extends Activity implements AirPlayServer.Listener,
-        VideoDecoder.SizeListener, SurfaceHolder.Callback {
+        VideoDecoder.SizeListener, SurfaceHolder.Callback, HlsPlayer.Listener {
 
     private static final String PREFS = "airplay";
     private static final String PREF_DEVICE_ID = "device_id";
@@ -36,8 +36,10 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private final VideoDecoder videoDecoder = new VideoDecoder();
     private final AudioPlayer audioPlayer = new AudioPlayer();
     private AirPlayServer server;
+    private HlsPlayer hlsPlayer;
 
     private SurfaceView surfaceView;
+    private SurfaceView hlsSurfaceView;
     private View idleScreen;
     private TextView nameView;
     private TextView statusView;
@@ -48,6 +50,8 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private String receiverName;
     private int videoWidth;
     private int videoHeight;
+    private int hlsWidth;
+    private int hlsHeight;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +60,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         setContentView(R.layout.activity_main);
 
         surfaceView = findViewById(R.id.video_surface);
+        hlsSurfaceView = findViewById(R.id.hls_surface);
         idleScreen = findViewById(R.id.idle_screen);
         nameView = findViewById(R.id.receiver_name);
         statusView = findViewById(R.id.status);
@@ -65,6 +70,8 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         videoDecoder.setSizeListener(this);
         server = new AirPlayServer(videoDecoder, audioPlayer);
         server.setListener(this);
+        hlsPlayer = new HlsPlayer(this, hlsSurfaceView, this);
+        server.setHlsPlayer(hlsPlayer);
 
         receiverName = loadReceiverName();
         nameView.setText(getString(R.string.receiver_name_label, receiverName));
@@ -125,7 +132,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onConnectionCount(int count) {
-        if (count == 0) {
+        if (count == 0 && !hlsPlayer.isActive()) {
             runOnUiThread(() -> {
                 showIdle();
                 statusView.setText(R.string.status_ready);
@@ -136,6 +143,9 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     @Override
     public void onMirroringStopped() {
         runOnUiThread(() -> {
+            if (hlsPlayer.isActive()) {
+                return;
+            }
             showIdle();
             statusView.setText(R.string.status_ready);
         });
@@ -153,13 +163,52 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         runOnUiThread(() -> {
             videoWidth = width;
             videoHeight = height;
-            fitSurface();
+            fitSurface(surfaceView, videoWidth, videoHeight);
         });
     }
 
     @Override
     public void onFirstFrame() {
-        runOnUiThread(() -> idleScreen.setVisibility(View.GONE));
+        runOnUiThread(() -> {
+            if (!hlsPlayer.isActive()) {
+                surfaceView.setVisibility(View.VISIBLE);
+                idleScreen.setVisibility(View.GONE);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ HlsPlayer.Listener (main thread)
+
+    @Override
+    public void onAirPlayVideoStarted() {
+        statusView.setText(R.string.status_loading_video);
+        hlsSurfaceView.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onAirPlayVideoFirstFrame() {
+        idleScreen.setVisibility(View.GONE);
+    }
+
+    @Override
+    public void onAirPlayVideoSizeChanged(int width, int height) {
+        hlsWidth = width;
+        hlsHeight = height;
+        fitSurface(hlsSurfaceView, hlsWidth, hlsHeight);
+    }
+
+    @Override
+    public void onAirPlayVideoStopped() {
+        hlsSurfaceView.setVisibility(View.GONE);
+        showIdle();
+        statusView.setText(R.string.status_ready);
+    }
+
+    @Override
+    public void onAirPlayVideoError(String message) {
+        hlsSurfaceView.setVisibility(View.GONE);
+        showIdle();
+        statusView.setText(getString(R.string.status_video_error, message));
     }
 
     // ------------------------------------------------------------------ SurfaceHolder.Callback
@@ -186,8 +235,8 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     }
 
     /** Letterboxes the video so it keeps its aspect ratio (portrait phones get side bars). */
-    private void fitSurface() {
-        View parent = (View) surfaceView.getParent();
+    private void fitSurface(SurfaceView view, int videoWidth, int videoHeight) {
+        View parent = (View) view.getParent();
         int pw = parent.getWidth();
         int ph = parent.getHeight();
         if (pw <= 0 || ph <= 0 || videoWidth <= 0 || videoHeight <= 0) {
@@ -199,11 +248,11 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
             h = ph;
             w = (int) ((long) ph * videoWidth / videoHeight);
         }
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) surfaceView.getLayoutParams();
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) view.getLayoutParams();
         if (lp.width != w || lp.height != h) {
             lp.width = w;
             lp.height = h;
-            surfaceView.setLayoutParams(lp);
+            view.setLayoutParams(lp);
         }
     }
 

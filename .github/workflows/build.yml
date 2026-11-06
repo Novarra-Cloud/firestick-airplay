@@ -39,7 +39,9 @@ jobs:
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk FirestickAirPlay.apk
 
+      # Optional: fails when the account's Actions storage quota is full.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: FirestickAirPlay-apk
           path: FirestickAirPlay.apk

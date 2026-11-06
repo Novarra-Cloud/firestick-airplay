@@ -4,8 +4,11 @@ A Fire TV app that makes your Firestick show up in your iPhone's **Screen Mirror
 list, so you can watch apps like Dreaming Spanish on the TV.
 
 While the app is open on the TV, your iPhone (or iPad / Mac) sees it as an AirPlay
-receiver. Pick it from **Control Center → Screen Mirroring** and the phone's screen and
-sound play on the TV.
+receiver. Two ways to use it:
+
+* **AirPlay button in a video app** (e.g. Dreaming Spanish): the phone hands the video
+  over to the TV. The TV streams it by itself, so you can lock the phone or use other apps.
+* **Screen Mirroring** from Control Center: the TV shows exactly what is on the phone.
 
 ---
 
@@ -53,14 +56,19 @@ move it to the front of the home row so it's easy to reach.
 
 1. Make sure the iPhone and the Fire TV are on the **same Wi-Fi network**.
 2. Open **Firestick AirPlay** on the TV. It shows *"Ready — waiting for your iPhone"*.
-3. On the iPhone, swipe down from the top-right corner to open **Control Center**.
-4. Tap **Screen Mirroring** (two overlapping rectangles) and choose the Fire TV
-   (by default it is called "*your Fire TV's name* AirPlay").
-5. Open Dreaming Spanish on the phone, start a video and make it full screen (turn the
-   phone sideways).
+3. On the iPhone, open Dreaming Spanish and start a video.
+4. Tap the **AirPlay button** in the video player (a screen with a triangle) and choose
+   the Fire TV (by default it is called "*your Fire TV's name* AirPlay").
+5. The video plays on the TV. You can now lock the phone; play/pause and the progress
+   bar on the phone still control the TV.
 
-To stop, tap **Stop Mirroring** in Control Center on the iPhone, or press **Back** /
-**Home** on the Fire TV remote.
+If a video app's AirPlay hand-over doesn't work (the TV says the video could not be
+played), use **Screen Mirroring** instead: swipe down from the top-right corner of the
+iPhone to open **Control Center**, tap **Screen Mirroring** and choose the Fire TV. With
+mirroring the phone has to stay on and in the video app.
+
+To stop, tap the AirPlay button again and choose **iPhone** (or **Stop Mirroring** in
+Control Center), or press **Back** / **Home** on the Fire TV remote.
 
 **Keep the app open on the TV** while you watch. The Fire TV only appears in the iPhone's
 list while the app is on screen.
@@ -99,10 +107,12 @@ without any extra app:
   `SurfaceView`.
 * `AudioPlayer.java` – AAC-ELD / AAC-LC / ALAC decoding with `MediaCodec`, played with
   `AudioTrack`.
+* `HlsPlayer.java` – "AirPlay video": plays the stream URL handed over by the iPhone
+  with ExoPlayer (UxPlay's `-hls` mode). Videos protected with Apple FairPlay DRM can't
+  be played this way.
 * `MainActivity.java` – the full-screen TV UI.
 
-Not supported: "AirPlay video" (HLS URL casting, used by e.g. the YouTube app's AirPlay
-button), H.265 mirroring and PIN/password protection. Screen Mirroring works with any app.
+Not supported: H.265 mirroring and PIN/password protection.
 
 ### Building
 

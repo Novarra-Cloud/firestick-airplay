@@ -11,6 +11,14 @@
         android:layout_height="match_parent"
         android:layout_gravity="center" />
 
+    <!-- "AirPlay video": videos handed over from the AirPlay button in iPhone apps -->
+    <SurfaceView
+        android:id="@+id/hls_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/idle_screen"
         android:layout_width="match_parent"

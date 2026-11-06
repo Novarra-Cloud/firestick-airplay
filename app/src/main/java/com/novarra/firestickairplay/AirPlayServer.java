@@ -30,12 +30,18 @@ public final class AirPlayServer {
 
     private final VideoDecoder video;
     private final AudioPlayer audio;
+    private volatile HlsPlayer hls;
     private volatile Listener listener;
     private volatile boolean running;
 
     public AirPlayServer(VideoDecoder video, AudioPlayer audio) {
         this.video = video;
         this.audio = audio;
+    }
+
+    /** Player for "AirPlay video" (the AirPlay button inside video apps). */
+    public void setHlsPlayer(HlsPlayer hls) {
+        this.hls = hls;
     }
 
     public void setListener(Listener listener) {
@@ -68,6 +74,10 @@ public final class AirPlayServer {
         nativeStop();
         video.stop();
         audio.release();
+        HlsPlayer h = hls;
+        if (h != null) {
+            h.stop();
+        }
     }
 
     public boolean isRunning() {
@@ -137,6 +147,55 @@ public final class AirPlayServer {
         if (l != null) {
             l.onConnectionCount(count);
         }
+    }
+
+    // ------------------------------------------------------------------ AirPlay video (HLS)
+
+    @SuppressWarnings("unused")
+    private void onHlsPlay(String url, float startSeconds) {
+        // the phone switched from mirroring to handing over the video
+        video.stop();
+        audio.release();
+        HlsPlayer h = hls;
+        if (h != null) {
+            h.play(url, startSeconds);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private void onHlsSeek(float seconds) {
+        HlsPlayer h = hls;
+        if (h != null) {
+            h.seek(seconds);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private void onHlsRate(float rate) {
+        HlsPlayer h = hls;
+        if (h != null) {
+            h.setRate(rate);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private void onHlsStop() {
+        HlsPlayer h = hls;
+        if (h != null) {
+            h.stop();
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private float onHlsPauseAndGetPosition() {
+        HlsPlayer h = hls;
+        return (h != null) ? h.pauseAndGetPosition() : 0f;
+    }
+
+    @SuppressWarnings("unused")
+    private double[] onHlsPlaybackInfo() {
+        HlsPlayer h = hls;
+        return (h != null) ? h.playbackInfo() : new double[] {0, 0, 0, 0, 0};
     }
 
     @SuppressWarnings("unused")

@@ -47,6 +47,7 @@ static jobject g_server = NULL; /* global ref to the AirPlayServer instance */
 static jmethodID m_on_video_frame, m_on_video_size, m_on_video_stop;
 static jmethodID m_on_audio_format, m_on_audio_frame, m_on_volume;
 static jmethodID m_on_client, m_on_connections, m_on_log;
+static jmethodID m_hls_play, m_hls_seek, m_hls_rate, m_hls_stop, m_hls_pause_get_pos, m_hls_info;
 
 static pthread_key_t g_env_key;
 static pthread_once_t g_env_key_once = PTHREAD_ONCE_INIT;
@@ -59,6 +60,9 @@ static volatile bool g_running = false;
 static volatile bool g_reset_httpd = false;
 static volatile int g_open_connections = 0;
 static volatile int g_missed_feedback = 0;
+/* true while an "AirPlay video" (HLS/URL) stream is playing; the client then talks to us
+ * over the AirPlay video channel and may not send RTSP heartbeats */
+static volatile bool g_hls_active = false;
 static double g_current_volume = 0.0;
 
 /* ------------------------------------------------------------------ JNI helpers */
@@ -202,6 +206,36 @@ static void conn_reset(void *cls, int reason) {
 
 static void video_reset(void *cls, reset_type_t type) {
     ALOG(LOG_I, "video_reset type %d", (int) type);
+    switch (type) {
+    case RESET_TYPE_ON_VIDEO_PLAY:
+        /* the HLS player is started by on_video_play() */
+        return;
+    case RESET_TYPE_NOHOLD:
+        /* a new client took over: drop any AirPlay video state of the old one */
+        if (g_raop) {
+            raop_destroy_airplay_video(g_raop, -1);
+        }
+        g_hls_active = false;
+        call_void(m_hls_stop);
+        break;
+    case RESET_TYPE_HLS_SHUTDOWN:
+        if (g_raop) {
+            raop_destroy_airplay_video(g_raop, -1);
+            raop_remove_hls_connections(g_raop);
+        }
+        g_hls_active = false;
+        call_void(m_hls_stop);
+        break;
+    case RESET_TYPE_HLS_EOS:
+        g_hls_active = false;
+        call_void(m_hls_stop);
+        break;
+    case RESET_TYPE_RTP_TO_HLS_TEARDOWN:
+    case RESET_TYPE_RTP_SHUTDOWN:
+    default:
+        break;
+    }
+    /* screen mirroring (if any) has ended */
     call_void(m_on_video_stop);
 }
 
@@ -333,13 +367,95 @@ static bool check_register(void *cls, const char *pk) { return true; }
 static const char *passwd(void *cls, int *len) { *len = 0; return NULL; }
 static void get_custom_profile(void *cls, const char **custom_profile) { *custom_profile = NULL; }
 
-/* HLS ("AirPlay video") is not advertised, so these are never used. */
-static void on_video_play(void *cls, const char *location, const float start_position) {}
-static void on_video_scrub(void *cls, const float position) {}
-static void on_video_rate(void *cls, const float rate) {}
-static void on_video_stop(void *cls) {}
-static void on_video_acquire_playback_info(void *cls, playback_info_t *info) {}
-static float on_video_playlist_remove(void *cls) { return 0.0f; }
+/* ---- "AirPlay video": the client hands over a video URL (the AirPlay button in a video
+ * player). The video is played by ExoPlayer on the Java side, so the phone is free. */
+
+static void on_video_play(void *cls, const char *location, const float start_position) {
+    ALOG(LOG_I, "AirPlay video play: %s (start %.1f s)", location ? location : "(null)", start_position);
+    if (!location) {
+        return;
+    }
+    JNIEnv *env = get_env();
+    if (!env || !g_server) {
+        return;
+    }
+    g_hls_active = true;
+    g_missed_feedback = 0;
+    jstring url = to_jstring(env, location);
+    (*env)->CallVoidMethod(env, g_server, m_hls_play, url, (jfloat) start_position);
+    clear_exception(env);
+    if (url) (*env)->DeleteLocalRef(env, url);
+}
+
+static void on_video_scrub(void *cls, const float position) {
+    JNIEnv *env = get_env();
+    if (env && g_server) {
+        (*env)->CallVoidMethod(env, g_server, m_hls_seek, (jfloat) position);
+        clear_exception(env);
+    }
+}
+
+static void on_video_rate(void *cls, const float rate) {
+    JNIEnv *env = get_env();
+    if (env && g_server) {
+        (*env)->CallVoidMethod(env, g_server, m_hls_rate, (jfloat) rate);
+        clear_exception(env);
+    }
+}
+
+static void on_video_stop(void *cls) {
+    ALOG(LOG_I, "AirPlay video stop");
+    g_hls_active = false;
+    call_void(m_hls_stop);
+}
+
+static float on_video_playlist_remove(void *cls) {
+    JNIEnv *env = get_env();
+    float pos = 0.0f;
+    if (env && g_server) {
+        pos = (*env)->CallFloatMethod(env, g_server, m_hls_pause_get_pos);
+        clear_exception(env);
+    }
+    return pos;
+}
+
+/* Polled by the client (about once a second) to update its progress bar. */
+static void on_video_acquire_playback_info(void *cls, playback_info_t *info) {
+    g_missed_feedback = 0;
+    info->ready_to_play = true;
+    info->playback_likely_to_keep_up = true;
+    info->playback_buffer_empty = false;
+    info->playback_buffer_full = true;
+    JNIEnv *env = get_env();
+    if (!env || !g_server) {
+        return;
+    }
+    jdoubleArray arr = (jdoubleArray) (*env)->CallObjectMethod(env, g_server, m_hls_info);
+    clear_exception(env);
+    if (!arr) {
+        return;
+    }
+    jdouble v[5] = {0};
+    if ((*env)->GetArrayLength(env, arr) >= 5) {
+        (*env)->GetDoubleArrayRegion(env, arr, 0, 5, v);
+    }
+    (*env)->DeleteLocalRef(env, arr);
+    /* v = {duration, position, rate, still_playing, buffering} */
+    info->duration = v[0];
+    info->position = v[1];
+    info->rate = (float) v[2];
+    info->seek_start = 0.0;
+    info->seek_duration = v[0];
+    if (v[4] > 0.5) {
+        info->playback_buffer_empty = true;
+        info->playback_buffer_full = false;
+    }
+    if (v[3] < 0.5) {
+        /* the video has finished: tell the client */
+        info->position = -1.0;
+        info->duration = -1.0;
+    }
+}
 
 /* ------------------------------------------------------------------ server lifecycle */
 
@@ -355,9 +471,10 @@ static int parse_mac(const char *mac, char out[6]) {
 }
 
 static void set_features(dnssd_t *d) {
-    /* Same feature set as the UxPlay defaults (mirroring + audio, legacy pairing off,
-     * no HLS "AirPlay video", no H.265). */
-    static const unsigned char on[] = {1, 2, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    /* UxPlay's default feature set (mirroring + audio, legacy pairing off, no H.265) */
+    /* bits 0 and 4: AirPlay video / HLS, so the AirPlay button in video apps hands the
+     * video over instead of mirroring the screen (same as UxPlay's -hls option) */
+    static const unsigned char on[] = {0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
                                        20, 21, 22, 25, 28, 30};
     for (int bit = 0; bit < 64; bit++) {
         dnssd_set_airplay_features(d, bit, 0);
@@ -376,7 +493,7 @@ static void *supervisor_thread(void *arg) {
         }
         if (++ticks >= 10) {
             ticks = 0;
-            if (g_open_connections > 0) {
+            if (g_open_connections > 0 && !g_hls_active) {
                 if (++g_missed_feedback > MISSED_FEEDBACK_LIMIT) {
                     ALOG(LOG_W, "no heartbeat from client for %d s; resetting", MISSED_FEEDBACK_LIMIT);
                     g_reset_httpd = true;
@@ -416,6 +533,7 @@ static void stop_locked(void) {
         g_dnssd = NULL;
     }
     g_open_connections = 0;
+    g_hls_active = false;
 }
 
 JNIEXPORT jint JNICALL
@@ -506,6 +624,8 @@ Java_com_novarra_firestickairplay_AirPlayServer_nativeStart(JNIEnv *env, jobject
         ret = -4;
         goto out;
     }
+    raop_set_plist(g_raop, "hls", 1);
+    raop_set_lang(g_raop, "", "", "");
     if (width > 0) raop_set_plist(g_raop, "width", width);
     if (height > 0) raop_set_plist(g_raop, "height", height);
     if (fps > 0) {
@@ -583,6 +703,15 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_on_client = (*env)->GetMethodID(env, cls, "onClientConnecting", "(Ljava/lang/String;Ljava/lang/String;)V");
     m_on_connections = (*env)->GetMethodID(env, cls, "onConnectionCount", "(I)V");
     m_on_log = (*env)->GetMethodID(env, cls, "onNativeLog", "(ILjava/lang/String;)V");
+    m_hls_play = (*env)->GetMethodID(env, cls, "onHlsPlay", "(Ljava/lang/String;F)V");
+    m_hls_seek = (*env)->GetMethodID(env, cls, "onHlsSeek", "(F)V");
+    m_hls_rate = (*env)->GetMethodID(env, cls, "onHlsRate", "(F)V");
+    m_hls_stop = (*env)->GetMethodID(env, cls, "onHlsStop", "()V");
+    m_hls_pause_get_pos = (*env)->GetMethodID(env, cls, "onHlsPauseAndGetPosition", "()F");
+    m_hls_info = (*env)->GetMethodID(env, cls, "onHlsPlaybackInfo", "()[D");
+    if (!m_hls_play || !m_hls_seek || !m_hls_rate || !m_hls_stop || !m_hls_pause_get_pos || !m_hls_info) {
+        return JNI_ERR;
+    }
     if (!m_on_video_frame || !m_on_video_size || !m_on_video_stop || !m_on_audio_format ||
         !m_on_audio_frame || !m_on_volume || !m_on_client || !m_on_connections || !m_on_log) {
         return JNI_ERR;

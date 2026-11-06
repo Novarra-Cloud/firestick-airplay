@@ -7,7 +7,9 @@
     <string name="status_ready">Ready — waiting for your iPhone or iPad</string>
     <string name="status_connecting">Connecting to %1$s…</string>
     <string name="status_failed">Could not start the AirPlay receiver (error %1$d). Check that the Fire TV is connected to Wi-Fi and reopen the app.</string>
-    <string name="instructions">1. Connect your iPhone to the same Wi-Fi network as this Fire TV.\n2. Swipe down from the top-right corner of the iPhone to open Control Center.\n3. Tap Screen Mirroring (the two overlapping rectangles).\n4. Pick this Fire TV from the list, then play your video full screen.\n\nKeep this app open while you watch. Press Back or Home to stop.</string>
+    <string name="instructions">Connect your iPhone to the same Wi-Fi network as this Fire TV, then either:\n\n• In a video app (like Dreaming Spanish), tap the AirPlay button in the video player and pick this Fire TV. The video plays on the TV and you can lock your phone.\n\n• Or open Control Center, tap Screen Mirroring and pick this Fire TV to show your whole screen.\n\nKeep this app open on the TV. Press Back or Home to stop.</string>
+    <string name="status_loading_video">Loading video…</string>
+    <string name="status_video_error">This video could not be played on the TV (%1$s). Try Screen Mirroring from Control Center instead.</string>
     <string name="address_label">Fire TV network address: %1$s</string>
     <string name="no_network">Not connected to a network</string>
 </resources>
