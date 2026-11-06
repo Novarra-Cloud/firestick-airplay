@@ -8,12 +8,20 @@ import android.util.Log;
 import android.view.SurfaceView;
 
 import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.SubtitleView;
+
+import java.util.Collections;
+import java.util.Locale;
 
 /**
  * Plays "AirPlay video": when the AirPlay button inside a video app is used, the iPhone
@@ -42,7 +50,9 @@ public final class HlsPlayer {
 
     private final Context context;
     private final SurfaceView surfaceView;
+    private final SubtitleView subtitleView;
     private final Listener listener;
+    private boolean subtitlesEnabled;
     private final Handler main = new Handler(Looper.getMainLooper());
     private ExoPlayer player;
 
@@ -63,10 +73,15 @@ public final class HlsPlayer {
         }
     };
 
-    public HlsPlayer(Context context, SurfaceView surfaceView, Listener listener) {
+    public HlsPlayer(Context context, SurfaceView surfaceView, SubtitleView subtitleView,
+                     boolean subtitlesEnabled, Listener listener) {
         this.context = context.getApplicationContext();
         this.surfaceView = surfaceView;
+        this.subtitleView = subtitleView;
+        this.subtitlesEnabled = subtitlesEnabled;
         this.listener = listener;
+        subtitleView.setUserDefaultStyle();
+        subtitleView.setUserDefaultTextSize();
     }
 
     public boolean isActive() {
@@ -86,6 +101,7 @@ public final class HlsPlayer {
             player = p;
             p.setVideoSurfaceView(surfaceView);
             p.addListener(playerListener);
+            applySubtitleSelection(p);
             MediaItem.Builder item = new MediaItem.Builder().setUri(Uri.parse(url));
             if (url.contains(".m3u8")) {
                 item.setMimeType(MimeTypes.APPLICATION_M3U8);
@@ -129,6 +145,86 @@ public final class HlsPlayer {
         return (float) positionSec;
     }
 
+    // ------------------------------------------------------------------ TV remote controls (main thread)
+
+    public boolean subtitlesEnabled() {
+        return subtitlesEnabled;
+    }
+
+    /**
+     * Turns subtitles on/off. Returns the language now shown, "" when turned off, or null
+     * when the current video has no subtitles.
+     */
+    public String toggleSubtitles() {
+        subtitlesEnabled = !subtitlesEnabled;
+        ExoPlayer p = player;
+        if (p != null) {
+            applySubtitleSelection(p);
+            if (!p.getCurrentTracks().containsType(C.TRACK_TYPE_TEXT)) {
+                return subtitlesEnabled ? null : "";
+            }
+        }
+        return subtitlesEnabled ? subtitleLanguage() : "";
+    }
+
+    public void togglePause() {
+        ExoPlayer p = player;
+        if (p != null) {
+            p.setPlayWhenReady(!p.getPlayWhenReady());
+            updateState();
+        }
+    }
+
+    public void seekBy(long millis) {
+        ExoPlayer p = player;
+        if (p != null) {
+            long target = Math.max(0, p.getCurrentPosition() + millis);
+            long dur = p.getDuration();
+            if (dur != C.TIME_UNSET) {
+                target = Math.min(target, Math.max(0, dur - 1000));
+            }
+            p.seekTo(target);
+            updateState();
+        }
+    }
+
+    private void applySubtitleSelection(ExoPlayer p) {
+        TrackSelectionParameters params = p.getTrackSelectionParameters().buildUpon()
+                .setPreferredTextLanguages("es", "en")
+                .setSelectUndeterminedTextLanguage(true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled)
+                .build();
+        p.setTrackSelectionParameters(params);
+        if (!subtitlesEnabled) {
+            subtitleView.setCues(Collections.emptyList());
+        }
+        subtitleView.setVisibility(subtitlesEnabled ? android.view.View.VISIBLE : android.view.View.GONE);
+    }
+
+    private String subtitleLanguage() {
+        ExoPlayer p = player;
+        if (p == null) {
+            return "";
+        }
+        String any = null;
+        for (Tracks.Group group : p.getCurrentTracks().getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) {
+                continue;
+            }
+            for (int i = 0; i < group.length; i++) {
+                Format f = group.getTrackFormat(i);
+                String name = (f.language == null) ? "" : new Locale(f.language).getDisplayLanguage();
+                if (group.isTrackSelected(i)) {
+                    return name;
+                }
+                if (any == null) {
+                    any = name;
+                }
+            }
+        }
+        return any == null ? "" : any;
+    }
+
     public void stop() {
         boolean wasActive = active;
         active = false;
@@ -160,6 +256,7 @@ public final class HlsPlayer {
 
     private void releasePlayer() {
         main.removeCallbacks(updater);
+        subtitleView.setCues(Collections.emptyList());
         if (player != null) {
             player.removeListener(playerListener);
             player.release();
@@ -175,6 +272,11 @@ public final class HlsPlayer {
                 Log.i(TAG, "video ended");
                 ended = true;
             }
+        }
+
+        @Override
+        public void onCues(CueGroup cueGroup) {
+            subtitleView.setCues(cueGroup.cues);
         }
 
         @Override

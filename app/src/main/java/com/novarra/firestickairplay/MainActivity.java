@@ -7,12 +7,15 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.KeyEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+
+import androidx.media3.ui.SubtitleView;
 
 import java.io.File;
 import java.net.Inet4Address;
@@ -32,6 +35,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private static final String PREFS = "airplay";
     private static final String PREF_DEVICE_ID = "device_id";
     private static final String PREF_NAME = "receiver_name";
+    private static final String PREF_SUBTITLES = "subtitles";
 
     private final VideoDecoder videoDecoder = new VideoDecoder();
     private final AudioPlayer audioPlayer = new AudioPlayer();
@@ -44,6 +48,8 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private TextView nameView;
     private TextView statusView;
     private TextView addressView;
+    private TextView toastView;
+    private final Runnable hideToast = () -> toastView.setVisibility(View.GONE);
 
     private WifiManager.MulticastLock multicastLock;
     private WifiManager.WifiLock wifiLock;
@@ -65,12 +71,15 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         nameView = findViewById(R.id.receiver_name);
         statusView = findViewById(R.id.status);
         addressView = findViewById(R.id.address);
+        toastView = findViewById(R.id.toast);
+        SubtitleView subtitleView = findViewById(R.id.subtitles);
 
         surfaceView.getHolder().addCallback(this);
         videoDecoder.setSizeListener(this);
         server = new AirPlayServer(videoDecoder, audioPlayer);
         server.setListener(this);
-        hlsPlayer = new HlsPlayer(this, hlsSurfaceView, this);
+        boolean subtitles = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_SUBTITLES, false);
+        hlsPlayer = new HlsPlayer(this, hlsSurfaceView, subtitleView, subtitles, this);
         server.setHlsPlayer(hlsPlayer);
 
         receiverName = loadReceiverName();
@@ -187,7 +196,58 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onAirPlayVideoFirstFrame() {
-        idleScreen.setVisibility(View.GONE);
+        if (idleScreen.getVisibility() == View.VISIBLE) {
+            idleScreen.setVisibility(View.GONE);
+            showToast(getString(R.string.hint_remote), 6000);
+        }
+    }
+
+    /** Remote control while a handed-over video plays: OK = subtitles, play/pause, skip. */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (hlsPlayer.isActive() && idleScreen.getVisibility() != View.VISIBLE) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                case KeyEvent.KEYCODE_CAPTIONS:
+                case KeyEvent.KEYCODE_MENU: {
+                    String lang = hlsPlayer.toggleSubtitles();
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putBoolean(PREF_SUBTITLES, hlsPlayer.subtitlesEnabled()).apply();
+                    if (lang == null) {
+                        showToast(getString(R.string.subtitles_none), 3000);
+                    } else if (lang.isEmpty()) {
+                        showToast(getString(R.string.subtitles_off), 2000);
+                    } else {
+                        showToast(getString(R.string.subtitles_on, lang), 2000);
+                    }
+                    return true;
+                }
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                case KeyEvent.KEYCODE_MEDIA_PLAY:
+                case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                    hlsPlayer.togglePause();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                    hlsPlayer.seekBy(10_000);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                    hlsPlayer.seekBy(-10_000);
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    private void showToast(String text, long millis) {
+        toastView.removeCallbacks(hideToast);
+        toastView.setText(text);
+        toastView.setVisibility(View.VISIBLE);
+        toastView.postDelayed(hideToast, millis);
     }
 
     @Override

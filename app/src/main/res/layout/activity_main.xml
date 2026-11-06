@@ -19,6 +19,12 @@
         android:layout_gravity="center"
         android:visibility="gone" />
 
+    <androidx.media3.ui.SubtitleView
+        android:id="@+id/subtitles"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/idle_screen"
         android:layout_width="match_parent"
@@ -71,4 +77,19 @@
             android:textColor="#808080"
             android:textSize="14sp" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/toast"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="32dp"
+        android:background="#CC000000"
+        android:paddingStart="24dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="12dp"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:visibility="gone" />
 </FrameLayout>

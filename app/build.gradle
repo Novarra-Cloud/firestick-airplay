@@ -16,8 +16,8 @@ android {
         // Fire OS 6 (Fire TV Stick 2nd gen and later) is Android 7.1 / API 25.
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '1.1'
 
         ndk {
             // Fire TV sticks run 32-bit ARM user space; newer models can also run 64-bit.
@@ -69,4 +69,5 @@ dependencies {
     // ExoPlayer, for "AirPlay video" (HLS streams handed over by the iPhone)
     implementation 'androidx.media3:media3-exoplayer:1.5.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
+    implementation 'androidx.media3:media3-ui:1.5.1'  // SubtitleView
 }

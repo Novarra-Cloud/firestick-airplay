@@ -62,6 +62,17 @@ move it to the front of the home row so it's easy to reach.
 5. The video plays on the TV. You can now lock the phone; play/pause and the progress
    bar on the phone still control the TV.
 
+While a handed-over video plays, the Fire TV remote works too:
+
+* **OK** (center button) – subtitles on/off (Spanish if the video has them, otherwise
+  English). Your choice is remembered.
+* **Play/Pause** – pause or resume.
+* **◀ / ▶** – skip back / forward 10 seconds.
+
+Subtitles only appear if the video stream itself carries them. When Dreaming Spanish
+plays the next video automatically, that is up to the Dreaming Spanish app on the phone;
+the TV plays each new video it is sent.
+
 If a video app's AirPlay hand-over doesn't work (the TV says the video could not be
 played), use **Screen Mirroring** instead: swipe down from the top-right corner of the
 iPhone to open **Control Center**, tap **Screen Mirroring** and choose the Fire TV. With

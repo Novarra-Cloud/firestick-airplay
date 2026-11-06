@@ -625,7 +625,9 @@ Java_com_novarra_firestickairplay_AirPlayServer_nativeStart(JNIEnv *env, jobject
         goto out;
     }
     raop_set_plist(g_raop, "hls", 1);
-    raop_set_lang(g_raop, "", "", "");
+    /* keep Spanish (else English) subtitle renditions in handed-over videos; whether
+     * they are shown is toggled on the TV with the remote */
+    raop_set_lang(g_raop, "", "es:en", "");
     if (width > 0) raop_set_plist(g_raop, "width", width);
     if (height > 0) raop_set_plist(g_raop, "height", height);
     if (fps > 0) {

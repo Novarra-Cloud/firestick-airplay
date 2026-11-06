@@ -499,8 +499,9 @@ static slice_t *master_playlist_slicer(const char *master_playlist, airplay_vide
             } else if (!strncmp(type, "CLOSED-CAPTIONS", strlen("CLOSED-CAPTIONS"))) {
                 slice[index].type = 'c';
             } else {
+                /* FIRESTICK-AIRPLAY: an unknown TYPE must not terminate the whole app */
                 printf("invalid EXT-X-MEDIA tag  TYPE=%s",type);
-                exit(1);
+                slice[index].type = '\0';
             }
             const char *text = strstr(slice[index].first, "DEFAULT=");
             text = text < slice[index].last ? text : NULL;
