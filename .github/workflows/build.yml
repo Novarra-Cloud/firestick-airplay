@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android NDK and CMake
+        run: |
+          NDK_VERSION="$(cat ndk.version)"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "cmake;3.22.1" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Cache OpenSSL
+        uses: actions/cache@v4
+        with:
+          path: build-deps/openssl
+          key: openssl-${{ hashFiles('scripts/build-openssl-android.sh', 'ndk.version') }}
+
+      - name: Build OpenSSL for Android
+        run: scripts/build-openssl-android.sh
+
+      - name: Build APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk FirestickAirPlay.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FirestickAirPlay-apk
+          path: FirestickAirPlay.apk
+
+      # Publish the newest build as a GitHub release so the APK can be downloaded directly.
+      - name: Publish "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest FirestickAirPlay.apk \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Firestick AirPlay (latest build)" \
+            --notes "Built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Download FirestickAirPlay.apk and install it on your Fire TV (see README)."

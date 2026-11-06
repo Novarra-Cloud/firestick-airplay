@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.application'
+}
+
+// NDK used for both the app's native code and the OpenSSL build
+// (scripts/build-openssl-android.sh reads the same version from ndk.version).
+def ndkVer = rootProject.file('ndk.version').text.trim()
+
+android {
+    namespace 'com.novarra.firestickairplay'
+    compileSdk 35
+    ndkVersion ndkVer
+
+    defaultConfig {
+        applicationId 'com.novarra.firestickairplay'
+        // Fire OS 6 (Fire TV Stick 2nd gen and later) is Android 7.1 / API 25.
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+
+        ndk {
+            // Fire TV sticks run 32-bit ARM user space; newer models can also run 64-bit.
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=none',
+                          "-DOPENSSL_ANDROID_DIR=${rootProject.file('build-deps/openssl').absolutePath}"
+            }
+        }
+    }
+
+    signingConfigs {
+        // A fixed key so that newer builds install over older ones without uninstalling.
+        // It only identifies this sideloaded app; it is not used anywhere else.
+        sideload {
+            storeFile rootProject.file('signing/sideload.keystore')
+            storePassword 'firestick-airplay'
+            keyAlias 'sideload'
+            keyPassword 'firestick-airplay'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.sideload
+        }
+        debug {
+            signingConfig signingConfigs.sideload
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
