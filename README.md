@@ -78,6 +78,10 @@ While a handed-over video plays, the Fire TV remote works too:
   English). Your choice is remembered.
 * **Play/Pause** – pause or resume.
 * **◀ / ▶** – skip back / forward 10 seconds.
+* **Back** – stop the video.
+
+The video keeps playing on the TV even if you leave the video page in the app on the
+phone (or switch to another app). Use **Back** on the remote to stop it.
 
 Subtitles only appear if the video stream itself carries them. When Dreaming Spanish
 plays the next video automatically, that is up to the Dreaming Spanish app on the phone;

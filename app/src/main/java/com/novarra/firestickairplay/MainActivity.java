@@ -198,10 +198,13 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     @Override
     public void onFirstFrame() {
         runOnUiThread(() -> {
-            if (!hlsPlayer.isActive()) {
-                surfaceView.setVisibility(View.VISIBLE);
-                idleScreen.setVisibility(View.GONE);
+            if (hlsPlayer.isActive()) {
+                // screen mirroring started: it replaces a video still playing on the TV
+                hlsPlayer.stop(false);
+                hlsSurfaceView.setVisibility(View.GONE);
             }
+            surfaceView.setVisibility(View.VISIBLE);
+            idleScreen.setVisibility(View.GONE);
         });
     }
 
@@ -226,6 +229,10 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (hlsPlayer.isActive() && idleScreen.getVisibility() != View.VISIBLE) {
             switch (keyCode) {
+                case KeyEvent.KEYCODE_BACK:
+                    // stop the video and return to the start screen (instead of leaving the app)
+                    hlsPlayer.stop();
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
                 case KeyEvent.KEYCODE_CAPTIONS:
@@ -288,6 +295,11 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     ? getString(R.string.subtitles_on_plain)
                     : getString(R.string.subtitles_on, language), 2000);
         }
+    }
+
+    @Override
+    public void onAirPlayVideoDetached() {
+        showToast(getString(R.string.video_detached), 6000);
     }
 
     @Override

@@ -15,11 +15,12 @@
     <string name="how_tip">Your iPhone must be on the same Wi-Fi as this TV. Keep this app open while you watch.</string>
     <string name="status_loading_video">Loading video…</string>
     <string name="status_video_error">This video could not be played on the TV (%1$s). Try Screen Mirroring from Control Center instead.</string>
-    <string name="hint_remote">Press OK on the remote for subtitles · ▶❚❚ to pause · ◀ ▶ to skip 10 s</string>
+    <string name="hint_remote">Remote: OK = subtitles · ▶❚❚ = pause · ◀ ▶ = skip 10 s · Back = stop</string>
     <string name="subtitles_on">Subtitles on (%1$s)</string>
     <string name="subtitles_off">Subtitles off</string>
     <string name="subtitles_none">This video doesn\'t send subtitles to the TV. To see the app\'s subtitles, use Screen Mirroring instead.</string>
     <string name="subtitles_on_plain">Subtitles on</string>
+    <string name="video_detached">Still playing on the TV · press Back on the remote to stop</string>
     <string name="version_label">version %1$s</string>
     <string name="update_title">Update available</string>
     <string name="update_message">A new version of Firestick AirPlay (%1$s) is ready. Install it now? It takes about a minute.</string>

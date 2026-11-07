@@ -182,7 +182,7 @@ public final class AirPlayServer {
     private void onHlsStop() {
         HlsPlayer h = hls;
         if (h != null) {
-            h.stop();
+            h.stopFromPhone();
         }
     }
 

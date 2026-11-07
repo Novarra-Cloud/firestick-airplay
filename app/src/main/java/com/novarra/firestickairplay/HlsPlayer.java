@@ -50,6 +50,9 @@ public final class HlsPlayer {
         /** Subtitles were switched on the iPhone. language is null when off, "" if unknown,
          *  and hasTracks is false when the video stream carries no subtitles at all. */
         void onAirPlaySubtitlesChanged(boolean enabled, String language, boolean hasTracks);
+
+        /** The iPhone stopped controlling the video, but the TV keeps playing it. */
+        void onAirPlayVideoDetached();
     }
 
     private final Context context;
@@ -62,6 +65,9 @@ public final class HlsPlayer {
     private ExoPlayer player;
 
     private volatile boolean active;
+    /** true when the phone let go but the TV kept playing (stop with the remote) */
+    private volatile boolean detached;
+    private String currentUrl;
     private volatile boolean ended;
     private volatile boolean buffering;
     private volatile double durationSec;
@@ -95,6 +101,7 @@ public final class HlsPlayer {
 
     public void play(String url, float startSeconds) {
         active = true;
+        detached = false;
         ended = false;
         buffering = true;
         positionSec = startSeconds;
@@ -102,6 +109,7 @@ public final class HlsPlayer {
         rate = 1.0;
         main.post(() -> {
             releasePlayer();
+            currentUrl = url;
             ExoPlayer p = new ExoPlayer.Builder(context).build();
             player = p;
             p.setVideoSurfaceView(surfaceView);
@@ -255,12 +263,47 @@ public final class HlsPlayer {
         return any == null ? "" : any;
     }
 
+    public boolean isDetached() {
+        return detached;
+    }
+
+    /**
+     * The iPhone asked to stop (e.g. the user left the video page in the app). Videos
+     * streamed straight from the internet keep playing on the TV; they are stopped with
+     * the remote's Back button instead. Videos relayed through the phone (localhost
+     * addresses, e.g. YouTube) cannot continue without it and are stopped.
+     */
+    public void stopFromPhone() {
+        main.post(() -> {
+            ExoPlayer p = player;
+            boolean canContinue = p != null && active && !ended && currentUrl != null
+                    && !currentUrl.contains("://localhost") && !currentUrl.contains("://127.0.0.1")
+                    && p.getPlaybackState() != Player.STATE_IDLE;
+            if (canContinue) {
+                if (!detached) {
+                    detached = true;
+                    Log.i(TAG, "phone stopped controlling; continuing playback on the TV");
+                    listener.onAirPlayVideoDetached();
+                }
+                return;
+            }
+            stop();
+        });
+    }
+
+    /** Stops playback and shows the start screen. */
     public void stop() {
+        stop(true);
+    }
+
+    /** Stops playback; notify=false when something else (screen mirroring) takes over. */
+    public void stop(boolean notify) {
         boolean wasActive = active;
         active = false;
+        detached = false;
         main.post(() -> {
             releasePlayer();
-            if (wasActive) {
+            if (wasActive && notify) {
                 listener.onAirPlayVideoStopped();
             }
         });
@@ -301,6 +344,10 @@ public final class HlsPlayer {
             if (state == Player.STATE_ENDED) {
                 Log.i(TAG, "video ended");
                 ended = true;
+                if (detached) {
+                    // nobody on the phone will send the next video: go back to the start screen
+                    stop();
+                }
             }
         }
 
