@@ -69,6 +69,14 @@ public final class HlsPlayer {
     private volatile boolean detached;
     private String currentUrl;
     private volatile boolean ended;
+    /** when the video reached its natural end (0 = not ended, or ended by an error) */
+    private volatile long endedAtMs;
+    /**
+     * After a natural end the iPhone is told "paused at the end" for this long, which is
+     * what its own player reports when a video finishes; apps such as Dreaming Spanish use
+     * that to start the next video (autoplay). Only then is "finished" (-1) reported.
+     */
+    private static final long END_GRACE_MS = 15_000;
     private volatile boolean buffering;
     private volatile double durationSec;
     private volatile double positionSec;
@@ -103,6 +111,7 @@ public final class HlsPlayer {
         active = true;
         detached = false;
         ended = false;
+        endedAtMs = 0;
         buffering = true;
         positionSec = startSeconds;
         durationSec = 0;
@@ -311,6 +320,11 @@ public final class HlsPlayer {
 
     /** {duration, position, rate, stillPlaying (1/0), buffering (1/0)} for the iPhone. */
     public double[] playbackInfo() {
+        if (active && ended && endedAtMs != 0
+                && System.currentTimeMillis() - endedAtMs < END_GRACE_MS) {
+            // reached the end normally: report "at the end, paused", still loaded
+            return new double[] {durationSec, durationSec, 0, 1, 0};
+        }
         boolean playing = active && !ended;
         return new double[] {durationSec, positionSec, rate, playing ? 1 : 0, buffering ? 1 : 0};
     }
@@ -341,8 +355,17 @@ public final class HlsPlayer {
         @Override
         public void onPlaybackStateChanged(int state) {
             updateState();
+            if ((state == Player.STATE_READY || state == Player.STATE_BUFFERING) && ended && endedAtMs != 0) {
+                // playback resumed after the end (e.g. skipped back with the remote)
+                ended = false;
+                endedAtMs = 0;
+            }
             if (state == Player.STATE_ENDED) {
                 Log.i(TAG, "video ended");
+                if (durationSec > 0) {
+                    positionSec = durationSec;
+                }
+                endedAtMs = System.currentTimeMillis();
                 ended = true;
                 if (detached) {
                     // nobody on the phone will send the next video: go back to the start screen
