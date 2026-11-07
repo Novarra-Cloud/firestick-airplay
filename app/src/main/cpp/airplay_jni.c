@@ -411,16 +411,18 @@ static void on_video_stop(void *cls) {
 }
 
 /* Subtitles turned on/off in the iPhone's video player. */
-static void on_video_subtitles(void *cls, bool enabled, const char *lang) {
+static void on_video_subtitles(void *cls, bool enabled, const char *lang, const char *raw_xml) {
     ALOG(LOG_I, "client subtitles %s (%s)", enabled ? "on" : "off", lang ? lang : "?");
     JNIEnv *env = get_env();
     if (!env || !g_server) {
         return;
     }
     jstring jl = lang ? to_jstring(env, lang) : NULL;
-    (*env)->CallVoidMethod(env, g_server, m_hls_subtitles, (jboolean) enabled, jl);
+    jstring jx = raw_xml ? to_jstring(env, raw_xml) : NULL;
+    (*env)->CallVoidMethod(env, g_server, m_hls_subtitles, (jboolean) enabled, jl, jx);
     clear_exception(env);
     if (jl) (*env)->DeleteLocalRef(env, jl);
+    if (jx) (*env)->DeleteLocalRef(env, jx);
 }
 
 static float on_video_playlist_remove(void *cls) {
@@ -726,7 +728,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_hls_stop = (*env)->GetMethodID(env, cls, "onHlsStop", "()V");
     m_hls_pause_get_pos = (*env)->GetMethodID(env, cls, "onHlsPauseAndGetPosition", "()F");
     m_hls_info = (*env)->GetMethodID(env, cls, "onHlsPlaybackInfo", "()[D");
-    m_hls_subtitles = (*env)->GetMethodID(env, cls, "onHlsSubtitles", "(ZLjava/lang/String;)V");
+    m_hls_subtitles = (*env)->GetMethodID(env, cls, "onHlsSubtitles", "(ZLjava/lang/String;Ljava/lang/String;)V");
     if (!m_hls_subtitles || !m_hls_play || !m_hls_seek || !m_hls_rate || !m_hls_stop || !m_hls_pause_get_pos || !m_hls_info) {
         return JNI_ERR;
     }

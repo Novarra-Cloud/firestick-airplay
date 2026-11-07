@@ -227,6 +227,18 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     /** Remote control while a handed-over video plays: OK = subtitles, play/pause, skip. */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            // troubleshooting: show what the iPhone last sent about subtitles
+            if (toastView.getVisibility() == View.VISIBLE) {
+                toastView.setVisibility(View.GONE);
+            } else {
+                String msg = server.lastSubtitleMessage();
+                msg = (msg == null) ? getString(R.string.debug_no_subtitle_message)
+                        : getString(R.string.debug_subtitle_message) + "\n" + compactXml(msg);
+                showToast(msg, 60_000);
+            }
+            return true;
+        }
         if (hlsPlayer.isActive() && idleScreen.getVisibility() != View.VISIBLE) {
             switch (keyCode) {
                 case KeyEvent.KEYCODE_BACK:
@@ -235,8 +247,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                case KeyEvent.KEYCODE_CAPTIONS:
-                case KeyEvent.KEYCODE_MENU: {
+                case KeyEvent.KEYCODE_CAPTIONS: {
                     String lang = hlsPlayer.toggleSubtitles();
                     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                             .putBoolean(PREF_SUBTITLES, hlsPlayer.subtitlesEnabled()).apply();
@@ -268,6 +279,23 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
             }
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /** Shortens plist XML so it fits on screen: drops the XML header and tags around values. */
+    private static String compactXml(String xml) {
+        String s = xml.replaceAll("(?s)<\\?xml.*?\\?>", "")
+                .replaceAll("(?s)<!DOCTYPE.*?>", "")
+                .replaceAll("</?plist[^>]*>", "")
+                .replaceAll("<key>([^<]*)</key>\\s*", "$1 = ")
+                .replaceAll("<string>([^<]*)</string>", "$1")
+                .replaceAll("<(true|false)/>", "$1")
+                .replaceAll("<integer>([^<]*)</integer>", "$1")
+                .replaceAll("MediaSelection", "")
+                .replaceAll("[ \\t]+", " ")
+                .replaceAll("(?m)^\\s+", "")
+                .replaceAll("\\n{2,}", "\n")
+                .trim();
+        return s.length() > 900 ? s.substring(0, 900) + "…" : s;
     }
 
     private void showToast(String text, long millis) {

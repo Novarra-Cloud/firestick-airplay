@@ -32,6 +32,12 @@ public final class AirPlayServer {
     private final AudioPlayer audio;
     private volatile HlsPlayer hls;
     private volatile Listener listener;
+    private volatile String lastSubtitleMessage;
+
+    /** The last subtitle selection received from the iPhone (for troubleshooting). */
+    public String lastSubtitleMessage() {
+        return lastSubtitleMessage;
+    }
     private volatile boolean running;
 
     public AirPlayServer(VideoDecoder video, AudioPlayer audio) {
@@ -187,7 +193,9 @@ public final class AirPlayServer {
     }
 
     @SuppressWarnings("unused")
-    private void onHlsSubtitles(boolean enabled, String language) {
+    private void onHlsSubtitles(boolean enabled, String language, String rawXml) {
+        lastSubtitleMessage = (enabled ? "ON" : "OFF") + (language != null ? " (" + language + ")" : "")
+                + "\n" + (rawXml == null ? "" : rawXml);
         HlsPlayer h = hls;
         if (h != null) {
             h.setSubtitlesFromPhone(enabled, language);

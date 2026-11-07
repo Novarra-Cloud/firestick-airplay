@@ -17,6 +17,7 @@
 /* this file is part of raop.c and should not be included in any other file */
 
 #include "airplay_video.h"
+#include <strings.h> /* FIRESTICK-AIRPLAY: strcasecmp */
 #include "fcup_request.h"
 
 static void
@@ -204,34 +205,89 @@ http_handler_set_property(raop_conn_t *conn,
             plist_to_xml(root, &xml, &xml_len);
             if (xml) {
                 logger_log(raop->logger, LOGGER_INFO, "selectedMediaArray:\n%s", xml);
-                bool enabled = (strstr(xml, "<string>sbtl</string>") != NULL);
-                char lang[16] = {0};
-                if (enabled) {
-                    /* language of the selected subtitle option, e.g. "es" or "en-US" */
-                    const char *keys[] = {"MediaSelectionOptionsUnicodeLanguageIdentifier",
-                                          "MediaSelectionOptionsExtendedLanguageTag", NULL};
-                    const char *sbtl = strstr(xml, "<string>sbtl</string>");
-                    const char *dict_start = sbtl;
-                    while (dict_start > xml && strncmp(dict_start, "<dict>", 6)) {
-                        dict_start--;
+            }
+            /* the selections are an array, either the root or under the key "value" */
+            plist_t arr = root;
+            if (plist_get_node_type(root) == PLIST_DICT) {
+                arr = plist_dict_get_item(root, "value");
+            }
+            bool enabled = false;
+            char lang[16] = {0};
+            if (arr && plist_get_node_type(arr) == PLIST_ARRAY) {
+                uint32_t n = plist_array_get_size(arr);
+                for (uint32_t i = 0; i < n; i++) {
+                    plist_t item = plist_array_get_item(arr, i);
+                    if (!item || plist_get_node_type(item) != PLIST_DICT) {
+                        continue;
                     }
-                    for (int k = 0; keys[k] && !lang[0]; k++) {
-                        const char *p = strstr(dict_start, keys[k]);
-                        const char *dict_end = strstr(sbtl, "</dict>");
-                        if (p && (!dict_end || p < dict_end)) {
-                            p = strstr(p, "<string>");
-                            if (p) {
-                                p += strlen("<string>");
-                                size_t n = 0;
-                                while (p[n] && p[n] != '<' && n < sizeof(lang) - 1) {
-                                    lang[n] = p[n];
-                                    n++;
-                                }
+                    plist_t type_node = plist_dict_get_item(item, "MediaSelectionGroupMediaType");
+                    char *type = NULL;
+                    if (type_node && plist_get_node_type(type_node) == PLIST_STRING) {
+                        plist_get_string_val(type_node, &type);
+                    }
+                    bool is_sbtl = type && !strcmp(type, "sbtl");
+                    if (type) {
+                        plist_mem_free(type);
+                    }
+                    if (!is_sbtl) {
+                        continue;
+                    }
+                    /* a subtitle group is listed; decide whether a real (non-forced)
+                     * subtitle option is selected in it */
+                    char *item_xml = NULL;
+                    uint32_t item_len = 0;
+                    plist_to_xml(item, &item_xml, &item_len);
+                    bool on = item_xml && strstr(item_xml, "<key>MediaSelectionOptions") != NULL;
+                    if (on && strstr(item_xml, "forced-only")) {
+                        on = false;
+                    }
+                    if (on && item_xml) {
+                        const char *k = strstr(item_xml, "<key>MediaSelectionOptionsDisplaysNonForcedSubtitles</key>");
+                        if (k) {
+                            const char *v = k + strlen("<key>MediaSelectionOptionsDisplaysNonForcedSubtitles</key>");
+                            while (*v == ' ' || *v == '\t' || *v == '\n' || *v == '\r') v++;
+                            if (!strncmp(v, "<false/>", 8)) {
+                                on = false;
                             }
                         }
                     }
+                    if (on) {
+                        plist_t name_node = plist_dict_get_item(item, "MediaSelectionOptionsName");
+                        char *name = NULL;
+                        if (name_node && plist_get_node_type(name_node) == PLIST_STRING) {
+                            plist_get_string_val(name_node, &name);
+                        }
+                        if (name && (!strcasecmp(name, "off") || !strcasecmp(name, "none") ||
+                                     !strcasecmp(name, "desactivado") || !strcasecmp(name, "ninguno"))) {
+                            on = false;
+                        }
+                        if (name) {
+                            plist_mem_free(name);
+                        }
+                    }
+                    if (on) {
+                        enabled = true;
+                        const char *keys[] = {"MediaSelectionOptionsUnicodeLanguageIdentifier",
+                                              "MediaSelectionOptionsExtendedLanguageTag", NULL};
+                        for (int k = 0; keys[k] && !lang[0]; k++) {
+                            plist_t l = plist_dict_get_item(item, keys[k]);
+                            char *ls = NULL;
+                            if (l && plist_get_node_type(l) == PLIST_STRING) {
+                                plist_get_string_val(l, &ls);
+                            }
+                            if (ls) {
+                                strncpy(lang, ls, sizeof(lang) - 1);
+                                plist_mem_free(ls);
+                            }
+                        }
+                    }
+                    if (item_xml) {
+                        plist_mem_free(item_xml);
+                    }
                 }
-                raop->callbacks.on_video_subtitles(raop->callbacks.cls, enabled, lang[0] ? lang : NULL);
+            }
+            raop->callbacks.on_video_subtitles(raop->callbacks.cls, enabled, lang[0] ? lang : NULL, xml);
+            if (xml) {
                 plist_mem_free(xml);
             }
             plist_free(root);

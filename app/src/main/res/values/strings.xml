@@ -20,6 +20,8 @@
     <string name="subtitles_off">Subtitles off</string>
     <string name="subtitles_none">This video doesn\'t send subtitles to the TV. To see the app\'s subtitles, use Screen Mirroring instead.</string>
     <string name="subtitles_on_plain">Subtitles on</string>
+    <string name="debug_no_subtitle_message">No subtitle message from the iPhone yet. Turn subtitles on or off in the app, then press ☰ again.</string>
+    <string name="debug_subtitle_message">Last subtitle message from the iPhone:</string>
     <string name="video_detached">Still playing on the TV · press Back on the remote to stop</string>
     <string name="version_label">version %1$s</string>
     <string name="update_title">Update available</string>

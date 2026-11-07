@@ -121,8 +121,9 @@ struct raop_callbacks_s {
     float  (*on_video_playlist_remove) (void *cls);
     void  (*get_custom_profile) (void *cls, const char **custom_profile);
     /* FIRESTICK-AIRPLAY: subtitle choice made on the client while playing AirPlay video
-     * (from setProperty selectedMediaArray). lang may be NULL when unknown. */
-    void  (*on_video_subtitles) (void *cls, bool enabled, const char *lang);
+     * (from setProperty selectedMediaArray). lang may be NULL when unknown; raw_xml is the
+     * whole request as XML (for diagnostics). */
+    void  (*on_video_subtitles) (void *cls, bool enabled, const char *lang, const char *raw_xml);
 };
 
 typedef struct raop_callbacks_s raop_callbacks_t;
