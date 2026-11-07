@@ -53,7 +53,7 @@ public final class AirPlayServer {
             lastActivityText = text;
             lastActivityCount = 1;
             activity.addLast(time + "  " + text);
-            while (activity.size() > 18) {
+            while (activity.size() > 24) {
                 activity.removeFirst();
             }
         }

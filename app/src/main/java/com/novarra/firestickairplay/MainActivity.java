@@ -518,6 +518,9 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onAirPlaySubtitlesChanged(boolean enabled, String language, boolean hasTracks) {
+        // remember the choice for the next videos (and next time the app opens)
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SUBTITLES, enabled).apply();
+        server.addActivity("TV: subtitles " + (enabled ? "on" : "off") + " (from iPhone)");
         if (!enabled) {
             showToast(getString(R.string.subtitles_off), 2000);
         } else if (!hasTracks) {
@@ -527,6 +530,11 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     ? getString(R.string.subtitles_on_plain)
                     : getString(R.string.subtitles_on, language), 2000);
         }
+    }
+
+    @Override
+    public void onAirPlaySubtitleOffIgnored() {
+        server.addActivity("TV: kept subtitles on (ignored automatic off at video start)");
     }
 
     @Override

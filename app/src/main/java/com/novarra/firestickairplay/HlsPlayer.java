@@ -93,6 +93,9 @@ public final class HlsPlayer {
          *  and hasTracks is false when the video stream carries no subtitles at all. */
         void onAirPlaySubtitlesChanged(boolean enabled, String language, boolean hasTracks);
 
+        /** An automatic "subtitles off" from the iPhone at the start of a video was ignored. */
+        void onAirPlaySubtitleOffIgnored();
+
         /** The iPhone stopped controlling the video, but the TV keeps playing it. */
         void onAirPlayVideoDetached();
     }
@@ -110,6 +113,9 @@ public final class HlsPlayer {
     /** true when the phone let go but the TV kept playing (stop with the remote) */
     private volatile boolean detached;
     private volatile long lastRemoteControlMs;
+    /** when the current video was started; subtitle "off" messages right after are ignored */
+    private volatile long playStartedAtMs;
+    private static final long SUBTITLE_START_WINDOW_MS = 10_000;
     private String currentUrl;
     private volatile boolean ended;
     /** when the video reached its natural end (0 = not ended, or ended by an error) */
@@ -151,6 +157,7 @@ public final class HlsPlayer {
     }
 
     public void play(String url, float startSeconds) {
+        playStartedAtMs = System.currentTimeMillis();
         active = true;
         detached = false;
         ended = false;
@@ -291,7 +298,17 @@ public final class HlsPlayer {
 
     /** Follows the subtitle choice made in the iPhone's video player. */
     public void setSubtitlesFromPhone(boolean enabled, String language) {
+        long now = System.currentTimeMillis();
+        boolean startOfVideo = !active || ended || now - playStartedAtMs < SUBTITLE_START_WINDOW_MS;
         main.post(() -> {
+            if (!enabled && subtitlesEnabled && startOfVideo) {
+                // At the start of each video the iPhone first reports "no subtitles" before
+                // applying its setting. Keep the viewer's choice instead of switching off;
+                // turning subtitles off during a video still works.
+                Log.i(TAG, "ignoring subtitles-off at the start of a video");
+                listener.onAirPlaySubtitleOffIgnored();
+                return;
+            }
             subtitlesEnabled = enabled;
             if (language != null && !language.isEmpty()) {
                 phoneLanguage = language.split("[-_]")[0];
