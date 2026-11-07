@@ -67,6 +67,7 @@ public final class HlsPlayer {
     private volatile boolean active;
     /** true when the phone let go but the TV kept playing (stop with the remote) */
     private volatile boolean detached;
+    private volatile long lastRemoteControlMs;
     private String currentUrl;
     private volatile boolean ended;
     /** when the video reached its natural end (0 = not ended, or ended by an error) */
@@ -149,6 +150,10 @@ public final class HlsPlayer {
 
     /** rate 0 = pause, 1 = play (as sent by the iPhone's play/pause button). */
     public void setRate(float newRate) {
+        if (System.currentTimeMillis() - lastRemoteControlMs < 3000) {
+            // the phone is catching up with a pause/play just done on the TV remote
+            return;
+        }
         rate = newRate;
         main.post(() -> {
             if (player != null) {
@@ -196,7 +201,15 @@ public final class HlsPlayer {
     public void togglePause() {
         ExoPlayer p = player;
         if (p != null) {
-            p.setPlayWhenReady(!p.getPlayWhenReady());
+            setPausedByRemote(p.getPlayWhenReady());
+        }
+    }
+
+    public void setPausedByRemote(boolean paused) {
+        ExoPlayer p = player;
+        if (p != null) {
+            lastRemoteControlMs = System.currentTimeMillis();
+            p.setPlayWhenReady(!paused);
             updateState();
         }
     }

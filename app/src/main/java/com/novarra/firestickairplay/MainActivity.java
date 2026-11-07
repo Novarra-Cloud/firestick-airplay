@@ -224,9 +224,55 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         }
     }
 
-    /** Remote control while a handed-over video plays: OK = subtitles, play/pause, skip. */
+    /**
+     * Remote control. Each button acts once when pressed; the matching release (and any
+     * auto-repeat while held, except for skipping) is swallowed too. Otherwise Fire OS passes
+     * the release of media buttons on to the system, which undid a pause as soon as the
+     * button was let go.
+     */
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        if (!handlesKey(keyCode)) {
+            return super.dispatchKeyEvent(event);
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            boolean repeatable = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                    || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND;
+            if (event.getRepeatCount() == 0 || repeatable) {
+                onRemoteKey(keyCode);
+            }
+        }
+        return true;
+    }
+
+    /** Whether the key is one this screen handles right now (otherwise normal behaviour). */
+    private boolean handlesKey(int keyCode) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            return true;
+        }
+        if (!hlsPlayer.isActive() || idleScreen.getVisibility() == View.VISIBLE) {
+            return false;
+        }
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_CAPTIONS:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean onRemoteKey(int keyCode) {
         if (keyCode == KeyEvent.KEYCODE_MENU) {
             // troubleshooting: show what the iPhone last sent about subtitles
             if (toastView.getVisibility() == View.VISIBLE) {
@@ -262,9 +308,13 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     return true;
                 }
                 case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                case KeyEvent.KEYCODE_MEDIA_PLAY:
-                case KeyEvent.KEYCODE_MEDIA_PAUSE:
                     hlsPlayer.togglePause();
+                    return true;
+                case KeyEvent.KEYCODE_MEDIA_PLAY:
+                    hlsPlayer.setPausedByRemote(false);
+                    return true;
+                case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                    hlsPlayer.setPausedByRemote(true);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                 case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
@@ -278,7 +328,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     break;
             }
         }
-        return super.onKeyDown(keyCode, event);
+        return false;
     }
 
     /** Shortens plist XML so it fits on screen: drops the XML header and tags around values. */
