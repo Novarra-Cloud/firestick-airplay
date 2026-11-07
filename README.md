@@ -52,6 +52,16 @@ Pick whichever is easiest:
 The app then appears under **Your Apps & Channels** as **Firestick AirPlay**. You can
 move it to the front of the home row so it's easy to reach.
 
+### Updates
+
+You only have to do the steps above once. When a new version is published, the app
+asks **"Update available – Install it now?"** when you open it. Choose **Update now**,
+then **Install** on the next screen.
+
+The first time, the Fire TV needs to allow the app to install updates:
+**Settings → My Fire TV → Developer options → Install unknown apps → Firestick AirPlay → ON**
+(the app offers to open Settings for you).
+
 ## 4. Watch Dreaming Spanish on the TV
 
 1. Make sure the iPhone and the Fire TV are on the **same Wi-Fi network**.

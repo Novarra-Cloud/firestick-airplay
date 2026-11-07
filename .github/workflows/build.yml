@@ -36,8 +36,12 @@ jobs:
       - name: Build APK
         run: ./gradlew --no-daemon assembleRelease
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk FirestickAirPlay.apk
+      - name: Rename APK and write version info
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk FirestickAirPlay.apk
+          # must match versionCode/versionName in app/build.gradle (read by Updater.java)
+          echo "{\"versionCode\": $((10 + GITHUB_RUN_NUMBER)), \"versionName\": \"1.${GITHUB_RUN_NUMBER}\"}" > version.json
+          cat version.json
 
       # Optional: fails when the account's Actions storage quota is full.
       - uses: actions/upload-artifact@v4
@@ -52,7 +56,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag --yes || true
-          gh release create latest FirestickAirPlay.apk \
+          gh release create latest FirestickAirPlay.apk version.json \
             --target "$GITHUB_SHA" --prerelease \
             --title "Firestick AirPlay (latest build)" \
             --notes "Built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Download FirestickAirPlay.apk and install it on your Fire TV (see README)."

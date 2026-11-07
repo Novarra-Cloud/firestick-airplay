@@ -14,6 +14,16 @@
     <string name="subtitles_on">Subtitles on (%1$s)</string>
     <string name="subtitles_off">Subtitles off</string>
     <string name="subtitles_none">This video has no subtitles to show on the TV</string>
+    <string name="version_label">version %1$s</string>
+    <string name="update_title">Update available</string>
+    <string name="update_message">A new version of Firestick AirPlay (%1$s) is ready. Install it now? It takes about a minute.</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading update… %1$d%%</string>
+    <string name="update_failed">Update failed: %1$s</string>
+    <string name="update_permission_title">Allow updates (one time)</string>
+    <string name="update_permission_message">To update itself, Firestick AirPlay needs permission to install apps.\n\nGo to Settings → My Fire TV → Developer options → Install unknown apps, and turn Firestick AirPlay ON. Then open this app again and choose Update now.</string>
+    <string name="update_open_settings">Open Settings</string>
     <string name="address_label">Fire TV network address: %1$s</string>
     <string name="no_network">Not connected to a network</string>
 </resources>

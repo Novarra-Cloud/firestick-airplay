@@ -1,6 +1,10 @@
 package com.novarra.firestickairplay;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.wifi.WifiManager;
@@ -30,17 +34,21 @@ import java.util.Locale;
  * Control Center -> Screen Mirroring list; mirrored video is shown here.
  */
 public class MainActivity extends Activity implements AirPlayServer.Listener,
-        VideoDecoder.SizeListener, SurfaceHolder.Callback, HlsPlayer.Listener {
+        VideoDecoder.SizeListener, SurfaceHolder.Callback, HlsPlayer.Listener, Updater.Callback {
 
     private static final String PREFS = "airplay";
     private static final String PREF_DEVICE_ID = "device_id";
     private static final String PREF_NAME = "receiver_name";
     private static final String PREF_SUBTITLES = "subtitles";
+    private static final long UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
     private final VideoDecoder videoDecoder = new VideoDecoder();
     private final AudioPlayer audioPlayer = new AudioPlayer();
     private AirPlayServer server;
     private HlsPlayer hlsPlayer;
+    private Updater updater;
+    private AlertDialog updateDialog;
+    private long lastUpdateCheck;
 
     private SurfaceView surfaceView;
     private SurfaceView hlsSurfaceView;
@@ -82,6 +90,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         hlsPlayer = new HlsPlayer(this, hlsSurfaceView, subtitleView, subtitles, this);
         server.setHlsPlayer(hlsPlayer);
 
+        updater = new Updater(this, this);
         receiverName = loadReceiverName();
         nameView.setText(getString(R.string.receiver_name_label, receiverName));
     }
@@ -92,6 +101,11 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         hideSystemUi();
         acquireNetworkLocks();
         startServer();
+        long now = System.currentTimeMillis();
+        if (now - lastUpdateCheck > UPDATE_CHECK_INTERVAL_MS) {
+            lastUpdateCheck = now;
+            updater.check();
+        }
     }
 
     @Override
@@ -353,10 +367,68 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         }
     }
 
+    // ------------------------------------------------------------------ Updater.Callback
+
+    @Override
+    public void onUpdateAvailable(String versionName) {
+        // Don't interrupt something that is playing; it will be offered next time.
+        if (isFinishing() || idleScreen.getVisibility() != View.VISIBLE) {
+            lastUpdateCheck = 0;
+            return;
+        }
+        if (updateDialog != null && updateDialog.isShowing()) {
+            return;
+        }
+        updateDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.update_title)
+                .setMessage(getString(R.string.update_message, versionName))
+                .setPositiveButton(R.string.update_now, (d, w) -> startUpdate())
+                .setNegativeButton(R.string.update_later, null)
+                .show();
+    }
+
+    @Override
+    public void onUpdateProgress(int percent) {
+        statusView.setText(getString(R.string.update_downloading, percent));
+    }
+
+    @Override
+    public void onUpdateFailed(String message) {
+        statusView.setText(getString(R.string.update_failed, message));
+    }
+
+    private void startUpdate() {
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.update_permission_title)
+                    .setMessage(R.string.update_permission_message)
+                    .setPositiveButton(R.string.update_open_settings, (d, w) -> openInstallSettings())
+                    .setNegativeButton(R.string.update_later, null)
+                    .show();
+            return;
+        }
+        statusView.setText(getString(R.string.update_downloading, 0));
+        updater.install();
+    }
+
+    private void openInstallSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS));
+            } catch (Exception ignored) {
+                // no settings app reachable; the message explains where to go
+            }
+        }
+    }
+
     private void updateAddress() {
         String ip = findIpv4Address();
-        addressView.setText(ip == null ? getString(R.string.no_network)
-                : getString(R.string.address_label, ip));
+        String version = getString(R.string.version_label, updater.installedVersionName());
+        addressView.setText((ip == null ? getString(R.string.no_network)
+                : getString(R.string.address_label, ip)) + "   ·   " + version);
     }
 
     private static String findIpv4Address() {

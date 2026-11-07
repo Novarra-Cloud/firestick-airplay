@@ -16,8 +16,11 @@ android {
         // Fire OS 6 (Fire TV Stick 2nd gen and later) is Android 7.1 / API 25.
         minSdk 24
         targetSdk 34
-        versionCode 2
-        versionName '1.1'
+        // CI builds are numbered by the workflow run so the in-app updater can tell them apart.
+        def run = (System.getenv('GITHUB_RUN_NUMBER') ?: '0') as int
+        versionCode 10 + run
+        versionName "1.${run}"
+
 
         ndk {
             // Fire TV sticks run 32-bit ARM user space; newer models can also run 64-bit.
