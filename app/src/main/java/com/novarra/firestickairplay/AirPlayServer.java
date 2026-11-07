@@ -34,13 +34,25 @@ public final class AirPlayServer {
     private volatile Listener listener;
     private volatile String lastSubtitleMessage;
     private final java.util.ArrayDeque<String> activity = new java.util.ArrayDeque<>();
+    private String lastActivityText;
+    private int lastActivityCount;
 
     /** Adds a line to the activity log shown when ☰ is held (troubleshooting). */
     void addActivity(String line) {
         String time = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
                 .format(new java.util.Date());
+        String text = line.replace('\n', ' ');
         synchronized (activity) {
-            activity.addLast(time + "  " + line.replace('\n', ' '));
+            // collapse repeats of the same message into one line with a count
+            if (text.equals(lastActivityText) && !activity.isEmpty()) {
+                lastActivityCount++;
+                activity.removeLast();
+                activity.addLast(time + "  " + text + "   ×" + lastActivityCount);
+                return;
+            }
+            lastActivityText = text;
+            lastActivityCount = 1;
+            activity.addLast(time + "  " + text);
             while (activity.size() > 18) {
                 activity.removeFirst();
             }

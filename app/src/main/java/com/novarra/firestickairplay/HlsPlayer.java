@@ -104,11 +104,11 @@ public final class HlsPlayer {
     /** when the video reached its natural end (0 = not ended, or ended by an error) */
     private volatile long endedAtMs;
     /**
-     * After a natural end the iPhone is told "paused at the end" for this long, which is
-     * what its own player reports when a video finishes; many video apps use
-     * that to start the next video (autoplay). Only then is "finished" (-1) reported.
+     * After a natural end the iPhone is told "playing, at the end" for this long, so its
+     * player finishes the item; many video apps use that to start the next video
+     * (autoplay). Only then is "finished" (-1) reported.
      */
-    private static final long END_GRACE_MS = 15_000;
+    private static final long END_GRACE_MS = 20_000;
     private volatile boolean buffering;
     private volatile double durationSec;
     private volatile double positionSec;
@@ -386,8 +386,10 @@ public final class HlsPlayer {
     public double[] playbackInfo() {
         if (active && ended && endedAtMs != 0
                 && System.currentTimeMillis() - endedAtMs < END_GRACE_MS) {
-            // reached the end normally: report "at the end, paused", still loaded
-            return new double[] {durationSec, durationSec, 0, 1, 0};
+            // Reached the end normally: report "playing, at the very end". Reporting "paused at
+            // the end" made the iPhone think playback had stalled; it kept sending play
+            // (rate=1) and never finished the item, so apps could not autoplay the next video.
+            return new double[] {durationSec, durationSec, 1, 1, 0};
         }
         boolean playing = active && !ended;
         return new double[] {durationSec, positionSec, rate, playing ? 1 : 0, buffering ? 1 : 0};
