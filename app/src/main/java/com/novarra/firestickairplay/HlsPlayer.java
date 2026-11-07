@@ -205,6 +205,25 @@ public final class HlsPlayer {
         }
     }
 
+    /** Current position in ms (main thread). */
+    public long positionMs() {
+        ExoPlayer p = player;
+        return p == null ? 0 : Math.max(0, p.getCurrentPosition());
+    }
+
+    /** Duration in ms, or 0 if unknown (main thread). */
+    public long durationMs() {
+        ExoPlayer p = player;
+        long d = (p == null) ? C.TIME_UNSET : p.getDuration();
+        return d == C.TIME_UNSET ? 0 : d;
+    }
+
+    /** True when paused (main thread). */
+    public boolean isPaused() {
+        ExoPlayer p = player;
+        return p != null && !p.getPlayWhenReady();
+    }
+
     public void setPausedByRemote(boolean paused) {
         ExoPlayer p = player;
         if (p != null) {

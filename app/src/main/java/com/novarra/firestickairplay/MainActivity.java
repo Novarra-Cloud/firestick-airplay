@@ -61,6 +61,11 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private View statusDot;
     private TextView addressView;
     private TextView toastView;
+    private View osdView;
+    private android.widget.ImageView osdState;
+    private TextView osdPosition;
+    private TextView osdDuration;
+    private android.widget.ProgressBar osdProgress;
     private final Runnable hideToast = () -> toastView.setVisibility(View.GONE);
 
     private WifiManager.MulticastLock multicastLock;
@@ -85,6 +90,11 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         statusDot = findViewById(R.id.status_dot);
         addressView = findViewById(R.id.address);
         toastView = findViewById(R.id.toast);
+        osdView = findViewById(R.id.osd);
+        osdState = findViewById(R.id.osd_state);
+        osdPosition = findViewById(R.id.osd_position);
+        osdDuration = findViewById(R.id.osd_duration);
+        osdProgress = findViewById(R.id.osd_progress);
         SubtitleView subtitleView = findViewById(R.id.subtitles);
 
         surfaceView.getHolder().addCallback(this);
@@ -224,111 +234,238 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         }
     }
 
-    /**
-     * Remote control. Each button acts once when pressed; the matching release (and any
-     * auto-repeat while held, except for skipping) is swallowed too. Otherwise Fire OS passes
-     * the release of media buttons on to the system, which undid a pause as soon as the
-     * button was let go.
+    // ------------------------------------------------------------------ TV remote
+
+    /*
+     * Buttons while a video handed over with the AirPlay button is playing:
+     *   OK / Play-Pause         pause or resume
+     *   Rewind / Fast-forward   back / forward 10 s (hold to keep skipping, faster after 2 s)
+     *   D-pad left / right      same as rewind / fast-forward
+     *   D-pad up / down         show the progress bar
+     *   Menu (☰) or CC          subtitles on/off  (hold Menu: show last subtitle message)
+     *   Back / Stop             stop the video
+     * Each press acts once; the release is swallowed as well, because Fire OS otherwise
+     * passes the release of media buttons on to the system (which undid a pause).
      */
+
+    private static final long SEEK_STEP_MS = 10_000;
+    private static final long SEEK_STEP_FAST_MS = 30_000;
+    private static final long SEEK_REPEAT_INTERVAL_MS = 250;
+
+    private long seekHoldStartMs;
+    private long lastSeekRepeatMs;
+    private boolean menuLongPressed;
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
-        if (!handlesKey(keyCode)) {
+        boolean videoOnScreen = idleScreen.getVisibility() != View.VISIBLE;
+        boolean airplayVideo = hlsPlayer.isActive() && videoOnScreen;
+
+        if (!airplayVideo) {
+            if (keyCode == KeyEvent.KEYCODE_MENU) {
+                return handleMenuKey(event, false);
+            }
+            if (videoOnScreen && isPlaybackKey(keyCode)) {
+                // screen mirroring: the TV only shows the phone's screen
+                if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                    showToast(getString(R.string.mirroring_remote_hint), 3000);
+                }
+                return true;
+            }
             return super.dispatchKeyEvent(event);
         }
-        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            boolean repeatable = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                    || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND;
-            if (event.getRepeatCount() == 0 || repeatable) {
-                onRemoteKey(keyCode);
-            }
-        }
-        return true;
-    }
 
-    /** Whether the key is one this screen handles right now (otherwise normal behaviour). */
-    private boolean handlesKey(int keyCode) {
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            return true;
-        }
-        if (!hlsPlayer.isActive() || idleScreen.getVisibility() == View.VISIBLE) {
-            return false;
-        }
+        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        boolean first = down && event.getRepeatCount() == 0;
         switch (keyCode) {
-            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_MENU:
+                return handleMenuKey(event, true);
+            case KeyEvent.KEYCODE_CAPTIONS:
+                if (first) {
+                    toggleSubtitles();
+                }
+                return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-            case KeyEvent.KEYCODE_CAPTIONS:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_SPACE:
+                if (first) {
+                    hlsPlayer.togglePause();
+                    showOsd();
+                }
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+                if (first) {
+                    hlsPlayer.setPausedByRemote(false);
+                    showOsd();
+                }
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                if (first) {
+                    hlsPlayer.setPausedByRemote(true);
+                    showOsd();
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_STEP_FORWARD:
+                if (down) {
+                    seekWithRemote(event, +1);
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD:
+            case KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD:
+                if (down) {
+                    seekWithRemote(event, -1);
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_INFO:
+                if (first) {
+                    if (osdView.getVisibility() == View.VISIBLE && !hlsPlayer.isPaused()) {
+                        hideOsd();
+                    } else {
+                        showOsd();
+                    }
+                }
+                return true;
+            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+                if (first) {
+                    hideOsd();
+                    hlsPlayer.stop();
+                }
+                return true;
+            default:
+                return super.dispatchKeyEvent(event);
+        }
+    }
+
+    private static boolean isPlaybackKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
             case KeyEvent.KEYCODE_MEDIA_PLAY:
             case KeyEvent.KEYCODE_MEDIA_PAUSE:
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-            case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
                 return true;
             default:
                 return false;
         }
     }
 
-    private boolean onRemoteKey(int keyCode) {
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            // troubleshooting: show what the iPhone last sent about subtitles
-            if (toastView.getVisibility() == View.VISIBLE) {
+    /** Short press: subtitles on/off. Long press: show the last subtitle message (troubleshooting). */
+    private boolean handleMenuKey(KeyEvent event, boolean subtitlesAvailable) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) {
+                menuLongPressed = false;
+            } else if (!menuLongPressed) {
+                menuLongPressed = true;
+                showSubtitleDebug();
+            }
+        } else if (event.getAction() == KeyEvent.ACTION_UP && !menuLongPressed) {
+            if (subtitlesAvailable) {
+                toggleSubtitles();
+            } else if (toastView.getVisibility() == View.VISIBLE) {
                 toastView.setVisibility(View.GONE);
-            } else {
-                String msg = server.lastSubtitleMessage();
-                msg = (msg == null) ? getString(R.string.debug_no_subtitle_message)
-                        : getString(R.string.debug_subtitle_message) + "\n" + compactXml(msg);
-                showToast(msg, 60_000);
-            }
-            return true;
-        }
-        if (hlsPlayer.isActive() && idleScreen.getVisibility() != View.VISIBLE) {
-            switch (keyCode) {
-                case KeyEvent.KEYCODE_BACK:
-                    // stop the video and return to the start screen (instead of leaving the app)
-                    hlsPlayer.stop();
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_CENTER:
-                case KeyEvent.KEYCODE_ENTER:
-                case KeyEvent.KEYCODE_CAPTIONS: {
-                    String lang = hlsPlayer.toggleSubtitles();
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                            .putBoolean(PREF_SUBTITLES, hlsPlayer.subtitlesEnabled()).apply();
-                    if (lang == null) {
-                        showToast(getString(R.string.subtitles_none), 3000);
-                    } else if (lang.isEmpty()) {
-                        showToast(getString(R.string.subtitles_off), 2000);
-                    } else {
-                        showToast(lang.equals("?") ? getString(R.string.subtitles_on_plain)
-                                : getString(R.string.subtitles_on, lang), 2000);
-                    }
-                    return true;
-                }
-                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                    hlsPlayer.togglePause();
-                    return true;
-                case KeyEvent.KEYCODE_MEDIA_PLAY:
-                    hlsPlayer.setPausedByRemote(false);
-                    return true;
-                case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                    hlsPlayer.setPausedByRemote(true);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                    hlsPlayer.seekBy(10_000);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                case KeyEvent.KEYCODE_MEDIA_REWIND:
-                    hlsPlayer.seekBy(-10_000);
-                    return true;
-                default:
-                    break;
             }
         }
-        return false;
+        return true;
+    }
+
+    private void seekWithRemote(KeyEvent event, int direction) {
+        long now = System.currentTimeMillis();
+        if (event.getRepeatCount() == 0) {
+            seekHoldStartMs = now;
+        } else if (now - lastSeekRepeatMs < SEEK_REPEAT_INTERVAL_MS) {
+            return; // auto-repeat while held: limit to 4 steps per second
+        }
+        lastSeekRepeatMs = now;
+        long step = (now - seekHoldStartMs > 2000) ? SEEK_STEP_FAST_MS : SEEK_STEP_MS;
+        hlsPlayer.seekBy(direction * step);
+        showOsd();
+    }
+
+    private void toggleSubtitles() {
+        String lang = hlsPlayer.toggleSubtitles();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(PREF_SUBTITLES, hlsPlayer.subtitlesEnabled()).apply();
+        if (lang == null) {
+            showToast(getString(R.string.subtitles_none), 3000);
+        } else if (lang.isEmpty()) {
+            showToast(getString(R.string.subtitles_off), 2000);
+        } else {
+            showToast(lang.equals("?") ? getString(R.string.subtitles_on_plain)
+                    : getString(R.string.subtitles_on, lang), 2000);
+        }
+    }
+
+    private void showSubtitleDebug() {
+        String msg = server.lastSubtitleMessage();
+        msg = (msg == null) ? getString(R.string.debug_no_subtitle_message)
+                : getString(R.string.debug_subtitle_message) + "\n" + compactXml(msg);
+        showToast(msg, 60_000);
+    }
+
+    // ------------------------------------------------------------------ progress bar (OSD)
+
+    private static final long OSD_TIMEOUT_MS = 4000;
+    private long osdHideAtMs;
+
+    private final Runnable osdUpdater = new Runnable() {
+        @Override
+        public void run() {
+            if (osdView.getVisibility() != View.VISIBLE) {
+                return;
+            }
+            if (!hlsPlayer.isActive()) {
+                hideOsd();
+                return;
+            }
+            boolean paused = hlsPlayer.isPaused();
+            if (!paused && System.currentTimeMillis() > osdHideAtMs) {
+                hideOsd();
+                return;
+            }
+            long pos = hlsPlayer.positionMs();
+            long dur = hlsPlayer.durationMs();
+            osdState.setImageResource(paused ? R.drawable.ic_pause : R.drawable.ic_play);
+            osdPosition.setText(formatTime(pos));
+            osdDuration.setText(dur > 0 ? formatTime(dur) : "");
+            osdProgress.setProgress(dur > 0 ? (int) (pos * 1000 / dur) : 0);
+            osdView.postDelayed(this, 250);
+        }
+    };
+
+    /** Shows the progress bar; it stays while paused and hides a few seconds after playing. */
+    private void showOsd() {
+        osdHideAtMs = System.currentTimeMillis() + OSD_TIMEOUT_MS;
+        osdView.removeCallbacks(osdUpdater);
+        osdView.setVisibility(View.VISIBLE);
+        osdUpdater.run();
+    }
+
+    private void hideOsd() {
+        osdView.removeCallbacks(osdUpdater);
+        osdView.setVisibility(View.GONE);
+    }
+
+    private static String formatTime(long ms) {
+        long total = ms / 1000;
+        long h = total / 3600;
+        long m = (total % 3600) / 60;
+        long sec = total % 60;
+        return (h > 0) ? String.format(Locale.US, "%d:%02d:%02d", h, m, sec)
+                : String.format(Locale.US, "%d:%02d", m, sec);
     }
 
     /** Shortens plist XML so it fits on screen: drops the XML header and tags around values. */
@@ -382,6 +519,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onAirPlayVideoStopped() {
+        hideOsd();
         hlsSurfaceView.setVisibility(View.GONE);
         showIdle();
         setStatus(getString(R.string.status_ready), STATUS_READY);

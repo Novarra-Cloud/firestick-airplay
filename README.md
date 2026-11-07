@@ -74,14 +74,13 @@ The first time, the Fire TV needs to allow the app to install updates:
 
 While a handed-over video plays, the Fire TV remote works too:
 
-* **OK** (center button) – subtitles on/off (Spanish if the video has them, otherwise
-  English). Your choice is remembered.
-* **Play/Pause** – pause or resume.
-* **◀ / ▶** – skip back / forward 10 seconds.
-* **Back** – stop the video.
-
-The video keeps playing on the TV even if you leave the video page in the app on the
-phone (or switch to another app). Use **Back** on the remote to stop it.
+| Button | What it does |
+|--------|--------------|
+| **OK** or **Play/Pause** | pause / resume (a progress bar appears) |
+| **Rewind / Fast-forward** or **◀ / ▶** | back / forward 10 s; hold to keep skipping (30 s steps after 2 s) |
+| **▲ / ▼** | show or hide the progress bar |
+| **☰ (Menu)** | subtitles on/off (hold ☰ to show the last subtitle message from the iPhone) |
+| **Back** | stop the video |
 
 Subtitles only appear if the video stream itself carries them. When Dreaming Spanish
 plays the next video automatically, that is up to the Dreaming Spanish app on the phone;
