@@ -84,6 +84,11 @@ struct raop_s {
     /* place to store media_data_store */
     airplay_video_t *airplay_video[MAX_AIRPLAY_VIDEO];
     int current_video;
+
+    /* FIRESTICK-AIRPLAY: next item queued by POST /action playlistInsert while another
+     * item plays (played when the current one ends) */
+    void *queued_item; /* plist_t */
+    char queued_session_id[64];
   
     /* activate support for HLS live streaming */
     bool hls_support;
@@ -705,6 +710,10 @@ void
 raop_destroy(raop_t *raop) {
     if (raop) {
         raop_destroy_airplay_video(raop, -1);
+        if (raop->queued_item) {
+            plist_free(raop->queued_item);
+            raop->queued_item = NULL;
+        }
         raop_stop_httpd(raop);
         pairing_destroy(raop->pairing);
         httpd_destroy(raop->httpd);
@@ -955,4 +964,18 @@ raop_send_video_event(raop_t *raop, const char *state, const char *reason) {
     logger_log(raop->logger, LOGGER_INFO, "sent AirPlay video event: state=%s%s%s", state,
                reason ? " reason=" : "", reason ? reason : "");
     return 0;
+}
+
+/* FIRESTICK-AIRPLAY: start the queued item (see raop.h). */
+int
+raop_play_queued_item(raop_t *raop) {
+    if (!raop || !raop->queued_item) {
+        return 0;
+    }
+    plist_t item = raop->queued_item;
+    raop->queued_item = NULL;
+    logger_log(raop->logger, LOGGER_INFO, "AirPlay queue: playing next item");
+    int ret = airplay_play_item(raop, raop->queued_session_id, item);
+    plist_free(item);
+    return ret == 0 ? 1 : 0;
 }

@@ -81,6 +81,13 @@ public final class AirPlayServer {
     public void setHlsPlayer(HlsPlayer hls) {
         this.hls = hls;
         hls.setEventSink(this::sendVideoEvent);
+        hls.setQueueAdvancer(() -> {
+            boolean started = running && nativePlayQueued() == 1;
+            if (started) {
+                addActivity("TV: playing the next queued video");
+            }
+            return started;
+        });
     }
 
     private final java.util.concurrent.ExecutorService eventExecutor =
@@ -146,6 +153,8 @@ public final class AirPlayServer {
     private native void nativeStop();
 
     private native void nativeSendVideoEvent(String state, String reason);
+
+    private native int nativePlayQueued();
 
     // ------------------------------------------------------------------ callbacks from native code
 

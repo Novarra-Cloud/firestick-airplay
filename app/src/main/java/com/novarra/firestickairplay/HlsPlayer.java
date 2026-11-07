@@ -42,6 +42,17 @@ public final class HlsPlayer {
     }
 
     private volatile EventSink eventSink;
+
+    /** Starts the next video the iPhone queued; returns true if one was started. */
+    public interface QueueAdvancer {
+        boolean playNext();
+    }
+
+    private volatile QueueAdvancer queueAdvancer;
+
+    public void setQueueAdvancer(QueueAdvancer advancer) {
+        this.queueAdvancer = advancer;
+    }
     private String lastEventState;
 
     public void setEventSink(EventSink sink) {
@@ -431,6 +442,13 @@ public final class HlsPlayer {
                 reportCurrentState(cur);
             }
             if (state == Player.STATE_ENDED) {
+                // The iPhone may have queued the next video (playlistInsert): play it, as an
+                // Apple TV does. This is how apps like Dreaming Spanish autoplay.
+                QueueAdvancer advancer = queueAdvancer;
+                if (!detached && advancer != null && advancer.playNext()) {
+                    Log.i(TAG, "video ended; playing the next queued video");
+                    return;
+                }
                 // like an Apple TV: tell the phone the item ended so its app can play the next one
                 reportState("stopped", "ended");
                 Log.i(TAG, "video ended");

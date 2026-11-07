@@ -503,6 +503,144 @@ http_handler_reverse(raop_conn_t *conn, http_request_t *request, http_response_t
  listed in the Master Playlist.     The POST /action request contains the playlist requested by the Server in
  the preceding "FCUP Request".   The FCUP Request sequence  continues until all Media Playlists have been obtained by the Server */ 
 
+/* FIRESTICK-AIRPLAY: starts playback of an AirPlay video item: the body of POST /play, or
+ * an item from POST /action playlistInsert (same keys: uuid, Content-Location,
+ * Start-Position-Seconds). Mirrors http_handler_play. Returns 0 on success. */
+static int
+airplay_play_item(raop_t *raop, const char *apple_session_id, plist_t item) {
+    char *playback_uuid = NULL;
+    char *playback_location = NULL;
+    plist_t uuid_node = plist_dict_get_item(item, "uuid");
+    if (!uuid_node || !PLIST_IS_STRING(uuid_node)) {
+        return -1;
+    }
+    plist_get_string_val(uuid_node, &playback_uuid);
+    if (!playback_uuid) {
+        return -1;
+    }
+
+    int id = get_playlist_by_uuid(raop, playback_uuid);
+    if (id >= 0 && !get_playback_location(raop->airplay_video[id])) {
+        raop_destroy_airplay_video(raop, id);
+        id = -1;
+    }
+    if (id >= 0) {
+        /* already known (e.g. removed and inserted again): resume it */
+        plist_mem_free(playback_uuid);
+        raop->current_video = id;
+        airplay_video_t *v = raop->airplay_video[id];
+        set_apple_session_id(v, apple_session_id, strlen(apple_session_id));
+        float resume_pos = get_resume_position_seconds(v);
+        float start_pos = get_start_position_seconds(v);
+        raop->callbacks.on_video_play(raop->callbacks.cls, get_playback_location(v),
+                                      resume_pos > start_pos ? resume_pos : start_pos);
+        return 0;
+    }
+
+    plist_t loc_node = plist_dict_get_item(item, "Content-Location");
+    if (loc_node && PLIST_IS_STRING(loc_node)) {
+        plist_get_string_val(loc_node, &playback_location);
+    }
+    if (!playback_location) {
+        logger_log(raop->logger, LOGGER_ERR, "AirPlay item has no Content-Location");
+        plist_mem_free(playback_uuid);
+        return -1;
+    }
+    const char *uri_suffix = strstr(playback_location, "/master.m3u8");
+    bool direct = !strncmp(playback_location, "http://", 7) || !strncmp(playback_location, "https://", 8);
+    if (!direct && !uri_suffix) {
+        logger_log(raop->logger, LOGGER_ERR, "Content-Location has unsupported form:\n%s\n", playback_location);
+        plist_mem_free(playback_uuid);
+        plist_mem_free(playback_location);
+        return -1;
+    }
+
+    /* free a slot (drop short stored playlists, keep one slot free), as /play does */
+    int count = 0;
+    for (int i = 0; i < MAX_AIRPLAY_VIDEO; i++) {
+        if (raop->airplay_video[i]) {
+            if (get_duration(raop->airplay_video[i]) < (float) MIN_STORED_AIRPLAY_VIDEO_DURATION_SECONDS) {
+                raop_destroy_airplay_video(raop, i);
+            } else {
+                count++;
+            }
+        }
+    }
+    id = -1;
+    for (int i = 0; i < MAX_AIRPLAY_VIDEO; i++) {
+        if (!raop->airplay_video[i]) {
+            id = i;
+            break;
+        }
+    }
+    if (id < 0) {
+        plist_mem_free(playback_uuid);
+        plist_mem_free(playback_location);
+        return -1;
+    }
+    raop->current_video = id;
+    raop->airplay_video[id] = airplay_video_init(raop, raop->port, raop->lang, raop->lang_subtitles, raop->lang_system);
+    airplay_video_t *v = raop->airplay_video[id];
+    if (!v) {
+        plist_mem_free(playback_uuid);
+        plist_mem_free(playback_location);
+        return -1;
+    }
+    set_apple_session_id(v, apple_session_id, strlen(apple_session_id));
+    set_playback_uuid(v, playback_uuid, strlen(playback_uuid));
+    plist_mem_free(playback_uuid);
+    if (++count == MAX_AIRPLAY_VIDEO) {
+        int next = (id + 1) % (int) MAX_AIRPLAY_VIDEO;
+        if (raop->airplay_video[next]) {
+            airplay_video_destroy(raop->airplay_video[next]);
+            raop->airplay_video[next] = NULL;
+        }
+    }
+
+    float start_position_seconds = 0.0f;
+    plist_t start_node = plist_dict_get_item(item, "Start-Position-Seconds");
+    if (start_node && PLIST_IS_REAL(start_node)) {
+        double d = 0.0;
+        plist_get_real_val(start_node, &d);
+        start_position_seconds = (float) d;
+    }
+    set_start_position_seconds(v, start_position_seconds);
+
+    if (direct) {
+        set_playback_location(v, playback_location, strlen(playback_location));
+        raop->callbacks.on_video_play(raop->callbacks.cls, get_playback_location(v), start_position_seconds);
+    } else {
+        /* HLS relayed through the phone (e.g. YouTube): fetch playlists with FCUP requests */
+        size_t len = strlen(get_uri_local_prefix(v)) + strlen(uri_suffix);
+        char *location = (char *) calloc(len + 1, sizeof(char));
+        if (!location) {
+            plist_mem_free(playback_location);
+            return -1;
+        }
+        strcat(location, get_uri_local_prefix(v));
+        strcat(location, uri_suffix);
+        set_playback_location(v, location, strlen(location));
+        free(location);
+        char *uri_prefix = (char *) calloc(strlen(playback_location) + 1, sizeof(char));
+        if (!uri_prefix) {
+            plist_mem_free(playback_location);
+            return -1;
+        }
+        strcat(uri_prefix, playback_location);
+        char *end = strstr(uri_prefix, "/master.m3u8");
+        *end = '\0';
+        set_uri_prefix(v, uri_prefix, strlen(uri_prefix));
+        free(uri_prefix);
+        set_next_media_uri_id(v, 0);
+        raop_conn_t tmp_conn;
+        memset(&tmp_conn, 0, sizeof(tmp_conn));
+        tmp_conn.raop = raop; /* fcup_request only uses conn->raop */
+        fcup_request((void *) &tmp_conn, playback_location, apple_session_id, get_next_FCUP_RequestID(v));
+    }
+    plist_mem_free(playback_location);
+    return 0;
+}
+
 static void
 http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t *response,
                     char **response_data, int *response_datalen) {
@@ -597,7 +735,22 @@ http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t 
                the video will then be restarted at its previous position */
             set_resume_position_seconds(airplay_video, position);
         } else {
-            logger_log(raop->logger, LOGGER_WARNING, "playlistRemove uuid %s does not match current_video\n", remove_uuid);
+            /* FIRESTICK-AIRPLAY: removing the queued (next) item */
+            plist_t q_uuid = raop->queued_item ? plist_dict_get_item(raop->queued_item, "uuid") : NULL;
+            char *q = NULL;
+            if (q_uuid && PLIST_IS_STRING(q_uuid)) {
+                plist_get_string_val(q_uuid, &q);
+            }
+            if (q && !strcmp(q, remove_uuid)) {
+                logger_log(raop->logger, LOGGER_INFO, "AirPlay queue: queued item removed");
+                plist_free(raop->queued_item);
+                raop->queued_item = NULL;
+            } else {
+                logger_log(raop->logger, LOGGER_WARNING, "playlistRemove uuid %s does not match current_video\n", remove_uuid);
+            }
+            if (q) {
+                plist_mem_free(q);
+            }
         }
         plist_mem_free (remove_uuid);
 
@@ -621,10 +774,28 @@ http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t 
             char *plist_xml = NULL;
             uint32_t plist_len = 0;
             plist_to_xml(req_params_item_node, &plist_xml, &plist_len);
-            printf("playlistInsert parameter item list is:\n%s", plist_xml);
+            logger_log(raop->logger, LOGGER_DEBUG, "playlistInsert item:\n%s", plist_xml);
             plist_mem_free(plist_xml);
         }
-        logger_log(raop->logger, LOGGER_ERR, "FIXME: playlistInsert is not yet implemented");
+        /* FIRESTICK-AIRPLAY: implement playlistInsert. If nothing is playing (e.g. the current
+         * item was just removed) play the item now; otherwise queue it as the next item, to
+         * be played when the current one ends (this is how apps autoplay the next video). */
+        if (raop->current_video < 0) {
+            logger_log(raop->logger, LOGGER_INFO, "AirPlay queue: insert -> play now");
+            if (raop->queued_item) {
+                plist_free(raop->queued_item);
+                raop->queued_item = NULL;
+            }
+            airplay_play_item(raop, session_id, req_params_item_node);
+        } else {
+            logger_log(raop->logger, LOGGER_INFO, "AirPlay queue: insert -> queued as next");
+            if (raop->queued_item) {
+                plist_free(raop->queued_item);
+            }
+            raop->queued_item = plist_copy(req_params_item_node);
+            strncpy(raop->queued_session_id, session_id, sizeof(raop->queued_session_id) - 1);
+            raop->queued_session_id[sizeof(raop->queued_session_id) - 1] = '\0';
+        }
 
     } else if (!strcmp(type, "unhandledURLResponse")) {   
         /* handling type "unhandledURLResponse" */

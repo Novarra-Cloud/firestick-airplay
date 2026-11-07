@@ -713,6 +713,18 @@ out:
     return ret;
 }
 
+/* Plays the next item the iPhone queued (playlistInsert). Returns 1 if one was started. */
+JNIEXPORT jint JNICALL
+Java_com_novarra_firestickairplay_AirPlayServer_nativePlayQueued(JNIEnv *env, jobject thiz) {
+    int started = 0;
+    pthread_mutex_lock(&g_lock);
+    if (g_raop) {
+        started = raop_play_queued_item(g_raop);
+    }
+    pthread_mutex_unlock(&g_lock);
+    return started;
+}
+
 /* Reports the AirPlay video state to the iPhone (playing/paused/loading/stopped). */
 JNIEXPORT void JNICALL
 Java_com_novarra_firestickairplay_AirPlayServer_nativeSendVideoEvent(JNIEnv *env, jobject thiz,

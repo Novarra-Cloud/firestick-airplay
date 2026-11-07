@@ -164,6 +164,9 @@ RAOP_API void raop_playlist_remove(raop_t *raop, void *airplay_video, float posi
  * "loading" or "stopped"; reason may be "ended") over the reverse (event) channel, as an
  * Apple TV does. Returns 0 on success. */
 RAOP_API int raop_send_video_event(raop_t *raop, const char *state, const char *reason);
+/* FIRESTICK-AIRPLAY: plays the item queued with playlistInsert, if any. Returns 1 if an
+ * item was started (on_video_play is called), 0 if the queue was empty. */
+RAOP_API int raop_play_queued_item(raop_t *raop);
 #ifdef __cplusplus
 }
 #endif
