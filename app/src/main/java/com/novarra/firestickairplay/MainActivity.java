@@ -40,6 +40,9 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private static final String PREF_DEVICE_ID = "device_id";
     private static final String PREF_NAME = "receiver_name";
     private static final String PREF_SUBTITLES = "subtitles";
+    private static final int STATUS_READY = 0;
+    private static final int STATUS_BUSY = 1;
+    private static final int STATUS_ERROR = 2;
     private static final long UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
     private final VideoDecoder videoDecoder = new VideoDecoder();
@@ -55,6 +58,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private View idleScreen;
     private TextView nameView;
     private TextView statusView;
+    private View statusDot;
     private TextView addressView;
     private TextView toastView;
     private final Runnable hideToast = () -> toastView.setVisibility(View.GONE);
@@ -78,6 +82,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         idleScreen = findViewById(R.id.idle_screen);
         nameView = findViewById(R.id.receiver_name);
         statusView = findViewById(R.id.status);
+        statusDot = findViewById(R.id.status_dot);
         addressView = findViewById(R.id.address);
         toastView = findViewById(R.id.toast);
         SubtitleView subtitleView = findViewById(R.id.subtitles);
@@ -140,9 +145,9 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         int result = server.start(receiverName, loadDeviceId(), keyFile, width, height, 30);
         updateAddress();
         if (result == 0) {
-            statusView.setText(R.string.status_ready);
+            setStatus(getString(R.string.status_ready), STATUS_READY);
         } else {
-            statusView.setText(getString(R.string.status_failed, result));
+            setStatus(getString(R.string.status_failed, result), STATUS_ERROR);
         }
     }
 
@@ -150,7 +155,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onClientConnecting(String name, String model) {
-        runOnUiThread(() -> statusView.setText(getString(R.string.status_connecting, name)));
+        runOnUiThread(() -> setStatus(getString(R.string.status_connecting, name), STATUS_BUSY));
     }
 
     @Override
@@ -158,7 +163,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         if (count == 0 && !hlsPlayer.isActive()) {
             runOnUiThread(() -> {
                 showIdle();
-                statusView.setText(R.string.status_ready);
+                setStatus(getString(R.string.status_ready), STATUS_READY);
             });
         }
     }
@@ -170,7 +175,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                 return;
             }
             showIdle();
-            statusView.setText(R.string.status_ready);
+            setStatus(getString(R.string.status_ready), STATUS_READY);
         });
     }
 
@@ -204,7 +209,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onAirPlayVideoStarted() {
-        statusView.setText(R.string.status_loading_video);
+        setStatus(getString(R.string.status_loading_video), STATUS_BUSY);
         hlsSurfaceView.setVisibility(View.VISIBLE);
     }
 
@@ -275,14 +280,14 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     public void onAirPlayVideoStopped() {
         hlsSurfaceView.setVisibility(View.GONE);
         showIdle();
-        statusView.setText(R.string.status_ready);
+        setStatus(getString(R.string.status_ready), STATUS_READY);
     }
 
     @Override
     public void onAirPlayVideoError(String message) {
         hlsSurfaceView.setVisibility(View.GONE);
         showIdle();
-        statusView.setText(getString(R.string.status_video_error, message));
+        setStatus(getString(R.string.status_video_error, message), STATUS_ERROR);
     }
 
     // ------------------------------------------------------------------ SurfaceHolder.Callback
@@ -303,6 +308,12 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private void setStatus(String text, int kind) {
+        statusView.setText(text);
+        int color = (kind == STATUS_READY) ? 0xFF34D399 : (kind == STATUS_ERROR) ? 0xFFF87171 : 0xFF5AB0FF;
+        statusDot.getBackground().mutate().setTint(color);
+    }
 
     private void showIdle() {
         idleScreen.setVisibility(View.VISIBLE);
@@ -389,12 +400,12 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onUpdateProgress(int percent) {
-        statusView.setText(getString(R.string.update_downloading, percent));
+        setStatus(getString(R.string.update_downloading, percent), STATUS_BUSY);
     }
 
     @Override
     public void onUpdateFailed(String message) {
-        statusView.setText(getString(R.string.update_failed, message));
+        setStatus(getString(R.string.update_failed, message), STATUS_ERROR);
     }
 
     private void startUpdate() {
@@ -407,7 +418,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     .show();
             return;
         }
-        statusView.setText(getString(R.string.update_downloading, 0));
+        setStatus(getString(R.string.update_downloading, 0), STATUS_BUSY);
         updater.install();
     }
 
@@ -428,7 +439,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         String ip = findIpv4Address();
         String version = getString(R.string.version_label, updater.installedVersionName());
         addressView.setText((ip == null ? getString(R.string.no_network)
-                : getString(R.string.address_label, ip)) + "   ·   " + version);
+                : getString(R.string.address_label, ip)) + "  ·  " + version);
     }
 
     private static String findIpv4Address() {

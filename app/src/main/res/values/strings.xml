@@ -2,12 +2,17 @@
 <resources>
     <string name="app_name">Firestick AirPlay</string>
     <string name="default_receiver_name">Firestick AirPlay</string>
-    <string name="receiver_name_label">Shows up on your iPhone as \"%1$s\"</string>
+    <string name="receiver_name_label">Appears on your iPhone as “%1$s”</string>
     <string name="status_starting">Starting…</string>
-    <string name="status_ready">Ready — waiting for your iPhone or iPad</string>
+    <string name="status_ready">Ready for your iPhone</string>
     <string name="status_connecting">Connecting to %1$s…</string>
     <string name="status_failed">Could not start the AirPlay receiver (error %1$d). Check that the Fire TV is connected to Wi-Fi and reopen the app.</string>
-    <string name="instructions">Connect your iPhone to the same Wi-Fi network as this Fire TV, then either:\n\n• In a video app (like Dreaming Spanish), tap the AirPlay button in the video player and pick this Fire TV. The video plays on the TV and you can lock your phone.\n\n• Or open Control Center, tap Screen Mirroring and pick this Fire TV to show your whole screen.\n\nKeep this app open on the TV. Press Back or Home to stop.</string>
+    <string name="how_title">Two ways to watch</string>
+    <string name="way1_title">AirPlay button in a video app</string>
+    <string name="way1_body">In Dreaming Spanish, tap the AirPlay icon in the video player and choose this TV. The TV plays the video on its own, so you can lock your phone.</string>
+    <string name="way2_title">Screen Mirroring</string>
+    <string name="way2_body">Open Control Center on the iPhone, tap Screen Mirroring and choose this TV to show your whole screen.</string>
+    <string name="how_tip">Your iPhone must be on the same Wi-Fi as this TV. Keep this app open while you watch.</string>
     <string name="status_loading_video">Loading video…</string>
     <string name="status_video_error">This video could not be played on the TV (%1$s). Try Screen Mirroring from Control Center instead.</string>
     <string name="hint_remote">Press OK on the remote for subtitles · ▶❚❚ to pause · ◀ ▶ to skip 10 s</string>
@@ -24,6 +29,6 @@
     <string name="update_permission_title">Allow updates (one time)</string>
     <string name="update_permission_message">To update itself, Firestick AirPlay needs permission to install apps.\n\nGo to Settings → My Fire TV → Developer options → Install unknown apps, and turn Firestick AirPlay ON. Then open this app again and choose Update now.</string>
     <string name="update_open_settings">Open Settings</string>
-    <string name="address_label">Fire TV network address: %1$s</string>
+    <string name="address_label">%1$s</string>
     <string name="no_network">Not connected to a network</string>
 </resources>
