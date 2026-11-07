@@ -279,7 +279,8 @@ public final class AirPlayServer {
             String m = message.trim();
             if (m.startsWith("AirPlay request") || m.startsWith("sent AirPlay video event")
                     || m.startsWith("playback-info reply") || m.startsWith("selectedMediaArray")
-                    || m.contains("connection request from") || m.startsWith("action type")) {
+                    || m.contains("connection request from") || m.startsWith("action type")
+                    || m.startsWith("AirPlay queue") || m.startsWith("AirPlay item")) {
                 addActivity(m.startsWith("selectedMediaArray") ? "subtitle selection received" : m);
             }
         }
