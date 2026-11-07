@@ -33,6 +33,26 @@ public final class AirPlayServer {
     private volatile HlsPlayer hls;
     private volatile Listener listener;
     private volatile String lastSubtitleMessage;
+    private final java.util.ArrayDeque<String> activity = new java.util.ArrayDeque<>();
+
+    /** Adds a line to the activity log shown when ☰ is held (troubleshooting). */
+    void addActivity(String line) {
+        String time = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                .format(new java.util.Date());
+        synchronized (activity) {
+            activity.addLast(time + "  " + line.replace('\n', ' '));
+            while (activity.size() > 18) {
+                activity.removeFirst();
+            }
+        }
+    }
+
+    /** The last AirPlay messages between the iPhone and the TV, oldest first. */
+    public String activityLog() {
+        synchronized (activity) {
+            return activity.isEmpty() ? "" : String.join("\n", activity);
+        }
+    }
 
     /** The last subtitle selection received from the iPhone (for troubleshooting). */
     public String lastSubtitleMessage() {
@@ -234,6 +254,14 @@ public final class AirPlayServer {
 
     @SuppressWarnings("unused")
     private void onNativeLog(int level, String message) {
+        if (message != null) {
+            String m = message.trim();
+            if (m.startsWith("AirPlay request") || m.startsWith("sent AirPlay video event")
+                    || m.startsWith("playback-info reply") || m.startsWith("selectedMediaArray")
+                    || m.contains("connection request from") || m.startsWith("action type")) {
+                addActivity(m.startsWith("selectedMediaArray") ? "subtitle selection received" : m);
+            }
+        }
         Listener l = listener;
         if (l != null && message != null && level <= 5 /* LOGGER_NOTICE */) {
             l.onStatus(message.trim());

@@ -207,6 +207,11 @@ static void conn_reset(void *cls, int reason) {
 
 static void video_reset(void *cls, reset_type_t type) {
     ALOG(LOG_I, "video_reset type %d", (int) type);
+    if (type != RESET_TYPE_ON_VIDEO_PLAY) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "AirPlay request: reset (type %d)", (int) type);
+        java_log(LOGGER_INFO, msg);
+    }
     switch (type) {
     case RESET_TYPE_ON_VIDEO_PLAY:
         /* the HLS player is started by on_video_play() */
@@ -382,6 +387,11 @@ static void on_video_play(void *cls, const char *location, const float start_pos
     }
     g_hls_active = true;
     g_missed_feedback = 0;
+    {
+        char msg[96];
+        snprintf(msg, sizeof(msg), "AirPlay request: play video (start %.0f s)", start_position);
+        java_log(LOGGER_INFO, msg);
+    }
     jstring url = to_jstring(env, location);
     (*env)->CallVoidMethod(env, g_server, m_hls_play, url, (jfloat) start_position);
     clear_exception(env);
@@ -457,6 +467,18 @@ static void on_video_acquire_playback_info(void *cls, playback_info_t *info) {
     }
     (*env)->DeleteLocalRef(env, arr);
     /* v = {duration, position, rate, still_playing, buffering} */
+    {
+        /* activity log: note changes in what we report (not every poll) */
+        static int last_state = -1;
+        int state = (v[3] < 0.5) ? 0 : (v[2] > 0.5 ? 2 : 1);
+        if (state != last_state) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "playback-info reply: %s pos %.1f / %.1f",
+                     state == 0 ? "finished" : state == 2 ? "playing" : "paused", v[1], v[0]);
+            java_log(LOGGER_INFO, msg);
+            last_state = state;
+        }
+    }
     info->duration = v[0];
     info->position = v[1];
     info->rate = (float) v[2];

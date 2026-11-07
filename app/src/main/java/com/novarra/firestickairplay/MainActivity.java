@@ -255,6 +255,7 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     private long seekHoldStartMs;
     private long lastSeekRepeatMs;
     private boolean menuLongPressed;
+    private boolean debugShowing;
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
@@ -373,7 +374,10 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                 showSubtitleDebug();
             }
         } else if (event.getAction() == KeyEvent.ACTION_UP && !menuLongPressed) {
-            if (subtitlesAvailable) {
+            if (debugShowing && toastView.getVisibility() == View.VISIBLE) {
+                debugShowing = false;
+                toastView.setVisibility(View.GONE);
+            } else if (subtitlesAvailable) {
                 toggleSubtitles();
             } else if (toastView.getVisibility() == View.VISIBLE) {
                 toastView.setVisibility(View.GONE);
@@ -409,11 +413,20 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         }
     }
 
+    /** Hold ☰: shows the recent AirPlay activity (and last subtitle message) for troubleshooting. */
     private void showSubtitleDebug() {
-        String msg = server.lastSubtitleMessage();
-        msg = (msg == null) ? getString(R.string.debug_no_subtitle_message)
-                : getString(R.string.debug_subtitle_message) + "\n" + compactXml(msg);
-        showToast(msg, 60_000);
+        StringBuilder sb = new StringBuilder();
+        String log = server.activityLog();
+        sb.append(getString(R.string.debug_activity_title)).append('\n');
+        sb.append(log.isEmpty() ? getString(R.string.debug_activity_empty) : log);
+        String sub = server.lastSubtitleMessage();
+        if (sub != null) {
+            sb.append("\n\n").append(getString(R.string.debug_subtitle_message)).append(' ')
+                    .append(sub.split("\n", 2)[0]);
+        }
+        toastView.setTextSize(13);
+        showToast(sb.toString(), 120_000);
+        debugShowing = true;
     }
 
     // ------------------------------------------------------------------ progress bar (OSD)
@@ -486,6 +499,10 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     }
 
     private void showToast(String text, long millis) {
+        if (millis < 60_000) {
+            toastView.setTextSize(18);
+            debugShowing = false;
+        }
         toastView.removeCallbacks(hideToast);
         toastView.setText(text);
         toastView.setVisibility(View.VISIBLE);
@@ -514,11 +531,13 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
 
     @Override
     public void onAirPlayVideoDetached() {
+        server.addActivity("TV: phone let go, still playing");
         showToast(getString(R.string.video_detached), 6000);
     }
 
     @Override
     public void onAirPlayVideoStopped() {
+        server.addActivity("TV: video stopped, back to start screen");
         hideOsd();
         hlsSurfaceView.setVisibility(View.GONE);
         showIdle();

@@ -23,6 +23,8 @@
     <string name="debug_no_subtitle_message">No subtitle message from the iPhone yet. Turn subtitles on or off in the app, then hold ☰ again.</string>
     <string name="debug_subtitle_message">Last subtitle message from the iPhone:</string>
     <string name="mirroring_remote_hint">This is Screen Mirroring: use your iPhone to pause or skip</string>
+    <string name="debug_activity_title">Recent AirPlay activity (newest last) — hold ☰ to refresh, press ☰ to close</string>
+    <string name="debug_activity_empty">(nothing yet)</string>
     <string name="video_detached">Still playing on the TV · press Back on the remote to stop</string>
     <string name="version_label">version %1$s</string>
     <string name="update_title">Update available</string>

@@ -402,6 +402,10 @@ conn_request(void *ptr, http_request_t *request, http_response_t **response) {
     }
 
     logger_log(raop->logger, LOGGER_DEBUG, "Handling request %s with URL %s", method, url);
+    /* FIRESTICK-AIRPLAY: AirPlay video requests (except frequent polls) for the activity log */
+    if (!strcmp(protocol, "HTTP/1.1") && !hls_request && strcmp(url, "/playback-info")) {
+        logger_log(raop->logger, LOGGER_INFO, "AirPlay request: %s %s", method, url);
+    }
     raop_handler_t handler = NULL;
     if (!hls_request && !strcmp(protocol, "RTSP/1.0")) {
         if (!strcmp(method, "POST")) {
@@ -913,7 +917,7 @@ raop_send_video_event(raop_t *raop, const char *state, const char *reason) {
     const char *session_id = get_apple_session_id(raop->airplay_video[id]);
     int socket_fd = httpd_get_connection_socket_by_type(raop->httpd, CONNECTION_TYPE_EVENT, 1);
     if (!session_id || socket_fd <= 0) {
-        logger_log(raop->logger, LOGGER_DEBUG, "raop_send_video_event: no event channel");
+        logger_log(raop->logger, LOGGER_INFO, "sent AirPlay video event FAILED (no event channel): state=%s", state);
         return -1;
     }
 
