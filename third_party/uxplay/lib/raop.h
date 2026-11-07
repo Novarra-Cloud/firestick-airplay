@@ -160,6 +160,10 @@ RAOP_API void raop_remove_known_connections(raop_t * raop);
 RAOP_API void raop_remove_hls_connections(raop_t * raop);
 RAOP_API void raop_destroy_airplay_video(raop_t *raop, int id);
 RAOP_API void raop_playlist_remove(raop_t *raop, void *airplay_video, float position);
+/* FIRESTICK-AIRPLAY: tell the client about the AirPlay video state ("playing", "paused",
+ * "loading" or "stopped"; reason may be "ended") over the reverse (event) channel, as an
+ * Apple TV does. Returns 0 on success. */
+RAOP_API int raop_send_video_event(raop_t *raop, const char *state, const char *reason);
 #ifdef __cplusplus
 }
 #endif

@@ -899,3 +899,56 @@ const char *get_codec_string(hls_video_codec_t codec) {
     }
     return codec_string[codec];
 }
+
+/* FIRESTICK-AIRPLAY: AirPlay video state events (see raop.h) */
+int
+raop_send_video_event(raop_t *raop, const char *state, const char *reason) {
+    if (!raop || !raop->httpd || !state) {
+        return -1;
+    }
+    int id = raop->current_video;
+    if (id < 0 || id >= MAX_AIRPLAY_VIDEO || !raop->airplay_video[id]) {
+        return -1;
+    }
+    const char *session_id = get_apple_session_id(raop->airplay_video[id]);
+    int socket_fd = httpd_get_connection_socket_by_type(raop->httpd, CONNECTION_TYPE_EVENT, 1);
+    if (!session_id || socket_fd <= 0) {
+        logger_log(raop->logger, LOGGER_DEBUG, "raop_send_video_event: no event channel");
+        return -1;
+    }
+
+    plist_t root = plist_new_dict();
+    plist_dict_set_item(root, "category", plist_new_string("video"));
+    plist_dict_set_item(root, "sessionID", plist_new_uint(1));
+    plist_dict_set_item(root, "state", plist_new_string(state));
+    if (reason) {
+        plist_dict_set_item(root, "reason", plist_new_string(reason));
+    }
+    char *xml = NULL;
+    uint32_t xml_len = 0;
+    plist_to_xml(root, &xml, &xml_len);
+    plist_free(root);
+    if (!xml) {
+        return -1;
+    }
+
+    http_response_t *request = http_response_create();
+    http_response_reverse_request_init(request, "POST", "/event", "HTTP/1.1");
+    http_response_add_header(request, "X-Apple-Session-ID", session_id);
+    http_response_add_header(request, "Content-Type", "text/x-apple-plist+xml");
+    http_response_finish(request, xml, (int) xml_len);
+    plist_mem_free(xml);
+
+    int len = 0;
+    const char *data = http_response_get_data(request, &len);
+    int sent = send(socket_fd, data, len, 0);
+    http_response_destroy(request);
+    if (sent < 0) {
+        int err = SOCKET_GET_ERROR();
+        logger_log(raop->logger, LOGGER_ERR, "raop_send_video_event: send error %d", err);
+        return -1;
+    }
+    logger_log(raop->logger, LOGGER_INFO, "sent AirPlay video event: state=%s%s%s", state,
+               reason ? " reason=" : "", reason ? reason : "");
+    return 0;
+}

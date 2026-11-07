@@ -691,6 +691,21 @@ out:
     return ret;
 }
 
+/* Reports the AirPlay video state to the iPhone (playing/paused/loading/stopped). */
+JNIEXPORT void JNICALL
+Java_com_novarra_firestickairplay_AirPlayServer_nativeSendVideoEvent(JNIEnv *env, jobject thiz,
+                                                                     jstring jstate, jstring jreason) {
+    const char *state = jstate ? (*env)->GetStringUTFChars(env, jstate, NULL) : NULL;
+    const char *reason = jreason ? (*env)->GetStringUTFChars(env, jreason, NULL) : NULL;
+    pthread_mutex_lock(&g_lock);
+    if (g_raop && state) {
+        raop_send_video_event(g_raop, state, reason);
+    }
+    pthread_mutex_unlock(&g_lock);
+    if (state) (*env)->ReleaseStringUTFChars(env, jstate, state);
+    if (reason) (*env)->ReleaseStringUTFChars(env, jreason, reason);
+}
+
 JNIEXPORT void JNICALL
 Java_com_novarra_firestickairplay_AirPlayServer_nativeStop(JNIEnv *env, jobject thiz) {
     bool was_running = g_running;

@@ -36,6 +36,37 @@ public final class HlsPlayer {
 
     private static final String TAG = "HlsPlayer";
 
+    /** Receives AirPlay video state events to send to the iPhone. */
+    public interface EventSink {
+        void send(String state, String reason);
+    }
+
+    private volatile EventSink eventSink;
+    private String lastEventState;
+
+    public void setEventSink(EventSink sink) {
+        this.eventSink = sink;
+    }
+
+    /** Sends playing/paused/loading/stopped to the iPhone when it changes (main thread). */
+    private void reportState(String state, String reason) {
+        EventSink sink = eventSink;
+        if (sink == null || detached || state.equals(lastEventState)) {
+            return;
+        }
+        lastEventState = state;
+        sink.send(state, reason);
+    }
+
+    private void reportCurrentState(ExoPlayer p) {
+        int st = p.getPlaybackState();
+        if (st == Player.STATE_BUFFERING) {
+            reportState("loading", null);
+        } else if (st == Player.STATE_READY) {
+            reportState(p.getPlayWhenReady() ? "playing" : "paused", null);
+        }
+    }
+
     public interface Listener {
         void onAirPlayVideoStarted();
 
@@ -120,6 +151,7 @@ public final class HlsPlayer {
         main.post(() -> {
             releasePlayer();
             currentUrl = url;
+            lastEventState = null;
             ExoPlayer p = new ExoPlayer.Builder(context).build();
             player = p;
             p.setVideoSurfaceView(surfaceView);
@@ -392,7 +424,13 @@ public final class HlsPlayer {
                 ended = false;
                 endedAtMs = 0;
             }
+            ExoPlayer cur = player;
+            if (cur != null && state != Player.STATE_ENDED) {
+                reportCurrentState(cur);
+            }
             if (state == Player.STATE_ENDED) {
+                // like an Apple TV: tell the phone the item ended so its app can play the next one
+                reportState("stopped", "ended");
                 Log.i(TAG, "video ended");
                 if (durationSec > 0) {
                     positionSec = durationSec;
@@ -403,6 +441,15 @@ public final class HlsPlayer {
                     // nobody on the phone will send the next video: go back to the start screen
                     stop();
                 }
+            }
+        }
+
+        @Override
+        public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+            ExoPlayer cur = player;
+            if (cur != null) {
+                updateState();
+                reportCurrentState(cur);
             }
         }
 

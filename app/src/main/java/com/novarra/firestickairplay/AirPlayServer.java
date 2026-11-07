@@ -48,6 +48,22 @@ public final class AirPlayServer {
     /** Player for "AirPlay video" (the AirPlay button inside video apps). */
     public void setHlsPlayer(HlsPlayer hls) {
         this.hls = hls;
+        hls.setEventSink(this::sendVideoEvent);
+    }
+
+    private final java.util.concurrent.ExecutorService eventExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** Tells the iPhone the AirPlay video state, like an Apple TV does (used e.g. for autoplay). */
+    private void sendVideoEvent(String state, String reason) {
+        if (!running) {
+            return;
+        }
+        eventExecutor.execute(() -> {
+            if (running) {
+                nativeSendVideoEvent(state, reason);
+            }
+        });
     }
 
     public void setListener(Listener listener) {
@@ -96,6 +112,8 @@ public final class AirPlayServer {
                                    int width, int height, int fps);
 
     private native void nativeStop();
+
+    private native void nativeSendVideoEvent(String state, String reason);
 
     // ------------------------------------------------------------------ callbacks from native code
 
