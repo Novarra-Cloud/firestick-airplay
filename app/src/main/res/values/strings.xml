@@ -18,7 +18,8 @@
     <string name="hint_remote">Press OK on the remote for subtitles · ▶❚❚ to pause · ◀ ▶ to skip 10 s</string>
     <string name="subtitles_on">Subtitles on (%1$s)</string>
     <string name="subtitles_off">Subtitles off</string>
-    <string name="subtitles_none">This video has no subtitles to show on the TV</string>
+    <string name="subtitles_none">This video doesn\'t send subtitles to the TV. To see the app\'s subtitles, use Screen Mirroring instead.</string>
+    <string name="subtitles_on_plain">Subtitles on</string>
     <string name="version_label">version %1$s</string>
     <string name="update_title">Update available</string>
     <string name="update_message">A new version of Firestick AirPlay (%1$s) is ready. Install it now? It takes about a minute.</string>

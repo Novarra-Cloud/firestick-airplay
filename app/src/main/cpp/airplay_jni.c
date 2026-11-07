@@ -48,6 +48,7 @@ static jmethodID m_on_video_frame, m_on_video_size, m_on_video_stop;
 static jmethodID m_on_audio_format, m_on_audio_frame, m_on_volume;
 static jmethodID m_on_client, m_on_connections, m_on_log;
 static jmethodID m_hls_play, m_hls_seek, m_hls_rate, m_hls_stop, m_hls_pause_get_pos, m_hls_info;
+static jmethodID m_hls_subtitles;
 
 static pthread_key_t g_env_key;
 static pthread_once_t g_env_key_once = PTHREAD_ONCE_INIT;
@@ -409,6 +410,19 @@ static void on_video_stop(void *cls) {
     call_void(m_hls_stop);
 }
 
+/* Subtitles turned on/off in the iPhone's video player. */
+static void on_video_subtitles(void *cls, bool enabled, const char *lang) {
+    ALOG(LOG_I, "client subtitles %s (%s)", enabled ? "on" : "off", lang ? lang : "?");
+    JNIEnv *env = get_env();
+    if (!env || !g_server) {
+        return;
+    }
+    jstring jl = lang ? to_jstring(env, lang) : NULL;
+    (*env)->CallVoidMethod(env, g_server, m_hls_subtitles, (jboolean) enabled, jl);
+    clear_exception(env);
+    if (jl) (*env)->DeleteLocalRef(env, jl);
+}
+
 static float on_video_playlist_remove(void *cls) {
     JNIEnv *env = get_env();
     float pos = 0.0f;
@@ -607,6 +621,7 @@ Java_com_novarra_firestickairplay_AirPlayServer_nativeStart(JNIEnv *env, jobject
     cbs.on_video_stop = on_video_stop;
     cbs.on_video_playlist_remove = on_video_playlist_remove;
     cbs.on_video_acquire_playback_info = on_video_acquire_playback_info;
+    cbs.on_video_subtitles = on_video_subtitles;
 
     g_raop = raop_init(&cbs);
     if (!g_raop) {
@@ -711,7 +726,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_hls_stop = (*env)->GetMethodID(env, cls, "onHlsStop", "()V");
     m_hls_pause_get_pos = (*env)->GetMethodID(env, cls, "onHlsPauseAndGetPosition", "()F");
     m_hls_info = (*env)->GetMethodID(env, cls, "onHlsPlaybackInfo", "()[D");
-    if (!m_hls_play || !m_hls_seek || !m_hls_rate || !m_hls_stop || !m_hls_pause_get_pos || !m_hls_info) {
+    m_hls_subtitles = (*env)->GetMethodID(env, cls, "onHlsSubtitles", "(ZLjava/lang/String;)V");
+    if (!m_hls_subtitles || !m_hls_play || !m_hls_seek || !m_hls_rate || !m_hls_stop || !m_hls_pause_get_pos || !m_hls_info) {
         return JNI_ERR;
     }
     if (!m_on_video_frame || !m_on_video_size || !m_on_video_stop || !m_on_audio_format ||

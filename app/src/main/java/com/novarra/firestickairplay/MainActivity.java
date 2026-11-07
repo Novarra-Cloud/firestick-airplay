@@ -238,7 +238,8 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
                     } else if (lang.isEmpty()) {
                         showToast(getString(R.string.subtitles_off), 2000);
                     } else {
-                        showToast(getString(R.string.subtitles_on, lang), 2000);
+                        showToast(lang.equals("?") ? getString(R.string.subtitles_on_plain)
+                                : getString(R.string.subtitles_on, lang), 2000);
                     }
                     return true;
                 }
@@ -274,6 +275,19 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
         hlsWidth = width;
         hlsHeight = height;
         fitSurface(hlsSurfaceView, hlsWidth, hlsHeight);
+    }
+
+    @Override
+    public void onAirPlaySubtitlesChanged(boolean enabled, String language, boolean hasTracks) {
+        if (!enabled) {
+            showToast(getString(R.string.subtitles_off), 2000);
+        } else if (!hasTracks) {
+            showToast(getString(R.string.subtitles_none), 4000);
+        } else {
+            showToast(language == null || language.isEmpty()
+                    ? getString(R.string.subtitles_on_plain)
+                    : getString(R.string.subtitles_on, language), 2000);
+        }
     }
 
     @Override

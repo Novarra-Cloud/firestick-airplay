@@ -46,6 +46,10 @@ public final class HlsPlayer {
         void onAirPlayVideoStopped();
 
         void onAirPlayVideoError(String message);
+
+        /** Subtitles were switched on the iPhone. language is null when off, "" if unknown,
+         *  and hasTracks is false when the video stream carries no subtitles at all. */
+        void onAirPlaySubtitlesChanged(boolean enabled, String language, boolean hasTracks);
     }
 
     private final Context context;
@@ -53,6 +57,7 @@ public final class HlsPlayer {
     private final SubtitleView subtitleView;
     private final Listener listener;
     private boolean subtitlesEnabled;
+    private String phoneLanguage; // language picked on the iPhone, e.g. "es"
     private final Handler main = new Handler(Looper.getMainLooper());
     private ExoPlayer player;
 
@@ -164,7 +169,11 @@ public final class HlsPlayer {
                 return subtitlesEnabled ? null : "";
             }
         }
-        return subtitlesEnabled ? subtitleLanguage() : "";
+        if (!subtitlesEnabled) {
+            return "";
+        }
+        String lang = subtitleLanguage();
+        return lang.isEmpty() ? "?" : lang;
     }
 
     public void togglePause() {
@@ -188,9 +197,30 @@ public final class HlsPlayer {
         }
     }
 
+    /** Follows the subtitle choice made in the iPhone's video player. */
+    public void setSubtitlesFromPhone(boolean enabled, String language) {
+        main.post(() -> {
+            subtitlesEnabled = enabled;
+            if (language != null && !language.isEmpty()) {
+                phoneLanguage = language.split("[-_]")[0];
+            }
+            ExoPlayer p = player;
+            boolean hasTracks = true;
+            if (p != null) {
+                applySubtitleSelection(p);
+                hasTracks = p.getPlaybackState() != Player.STATE_READY
+                        || p.getCurrentTracks().containsType(C.TRACK_TYPE_TEXT);
+            }
+            listener.onAirPlaySubtitlesChanged(enabled,
+                    enabled ? subtitleLanguage() : null, hasTracks);
+        });
+    }
+
     private void applySubtitleSelection(ExoPlayer p) {
+        String[] langs = (phoneLanguage == null)
+                ? new String[] {"es", "en"} : new String[] {phoneLanguage, "es", "en"};
         TrackSelectionParameters params = p.getTrackSelectionParameters().buildUpon()
-                .setPreferredTextLanguages("es", "en")
+                .setPreferredTextLanguages(langs)
                 .setSelectUndeterminedTextLanguage(true)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled)
                 .build();

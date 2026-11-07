@@ -187,6 +187,14 @@ public final class AirPlayServer {
     }
 
     @SuppressWarnings("unused")
+    private void onHlsSubtitles(boolean enabled, String language) {
+        HlsPlayer h = hls;
+        if (h != null) {
+            h.setSubtitlesFromPhone(enabled, language);
+        }
+    }
+
+    @SuppressWarnings("unused")
     private float onHlsPauseAndGetPosition() {
         HlsPlayer h = hls;
         return (h != null) ? h.pauseAndGetPosition() : 0f;

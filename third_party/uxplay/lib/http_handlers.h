@@ -186,6 +186,58 @@ http_handler_set_property(raop_conn_t *conn,
 
     */
 
+    /* FIRESTICK-AIRPLAY: forward the client's subtitle selection to the player */
+    if (!strcmp(property, "selectedMediaArray") && raop->callbacks.on_video_subtitles) {
+        int datalen = 0;
+        const char *data = http_request_get_data(request, &datalen);
+        plist_t root = NULL;
+        if (data && datalen > 0) {
+            if (datalen > 8 && !memcmp(data, "bplist00", 8)) {
+                plist_from_bin(data, datalen, &root);
+            } else {
+                plist_from_xml(data, datalen, &root);
+            }
+        }
+        if (root) {
+            char *xml = NULL;
+            uint32_t xml_len = 0;
+            plist_to_xml(root, &xml, &xml_len);
+            if (xml) {
+                logger_log(raop->logger, LOGGER_INFO, "selectedMediaArray:\n%s", xml);
+                bool enabled = (strstr(xml, "<string>sbtl</string>") != NULL);
+                char lang[16] = {0};
+                if (enabled) {
+                    /* language of the selected subtitle option, e.g. "es" or "en-US" */
+                    const char *keys[] = {"MediaSelectionOptionsUnicodeLanguageIdentifier",
+                                          "MediaSelectionOptionsExtendedLanguageTag", NULL};
+                    const char *sbtl = strstr(xml, "<string>sbtl</string>");
+                    const char *dict_start = sbtl;
+                    while (dict_start > xml && strncmp(dict_start, "<dict>", 6)) {
+                        dict_start--;
+                    }
+                    for (int k = 0; keys[k] && !lang[0]; k++) {
+                        const char *p = strstr(dict_start, keys[k]);
+                        const char *dict_end = strstr(sbtl, "</dict>");
+                        if (p && (!dict_end || p < dict_end)) {
+                            p = strstr(p, "<string>");
+                            if (p) {
+                                p += strlen("<string>");
+                                size_t n = 0;
+                                while (p[n] && p[n] != '<' && n < sizeof(lang) - 1) {
+                                    lang[n] = p[n];
+                                    n++;
+                                }
+                            }
+                        }
+                    }
+                }
+                raop->callbacks.on_video_subtitles(raop->callbacks.cls, enabled, lang[0] ? lang : NULL);
+                plist_mem_free(xml);
+            }
+            plist_free(root);
+        }
+    }
+
     if (!strcmp(property, "actionAtItemEnd") ||
         !strcmp(property, "selectedMediaArray") ||
         !strcmp(property, "reverseEndTime") ||
