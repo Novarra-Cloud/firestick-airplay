@@ -73,7 +73,7 @@ public final class HlsPlayer {
     private volatile long endedAtMs;
     /**
      * After a natural end the iPhone is told "paused at the end" for this long, which is
-     * what its own player reports when a video finishes; apps such as Dreaming Spanish use
+     * what its own player reports when a video finishes; many video apps use
      * that to start the next video (autoplay). Only then is "finished" (-1) reported.
      */
     private static final long END_GRACE_MS = 15_000;
