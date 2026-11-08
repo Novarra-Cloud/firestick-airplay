@@ -93,6 +93,9 @@ public final class HlsPlayer {
          *  and hasTracks is false when the video stream carries no subtitles at all. */
         void onAirPlaySubtitlesChanged(boolean enabled, String language, boolean hasTracks);
 
+        /** The video finished; waiting for the iPhone to send the next one. */
+        void onAirPlayVideoEnded();
+
         /** An automatic "subtitles off" from the iPhone at the start of a video was ignored. */
         void onAirPlaySubtitleOffIgnored();
 
@@ -125,7 +128,13 @@ public final class HlsPlayer {
      * player finishes the item; many video apps use that to start the next video
      * (autoplay). Only then is "finished" (-1) reported.
      */
-    private static final long END_GRACE_MS = 20_000;
+    /**
+     * How long to wait after a video ends for the iPhone to send the next one (apps such as
+     * Dreaming Spanish show a countdown first). Closing the session earlier (the old 20 s)
+     * made the TV drop back to the start screen before the app could autoplay.
+     */
+    private static final long END_WAIT_MS = 10 * 60 * 1000;
+    private volatile boolean endPausedByPhone;
     private static final double END_OVERSHOOT_SEC = 1.0;
     private volatile boolean buffering;
     private volatile double durationSec;
@@ -163,6 +172,7 @@ public final class HlsPlayer {
         detached = false;
         ended = false;
         endedAtMs = 0;
+        endPausedByPhone = false;
         buffering = true;
         positionSec = startSeconds;
         durationSec = 0;
@@ -203,6 +213,12 @@ public final class HlsPlayer {
     public void setRate(float newRate) {
         if (System.currentTimeMillis() - lastRemoteControlMs < 3000) {
             // the phone is catching up with a pause/play just done on the TV remote
+            return;
+        }
+        if (ended && endedAtMs != 0) {
+            // After the end the iPhone pauses its player (rate 0): that is how it accepts that
+            // the video finished. Mirror it in what we report; don't restart the video.
+            endPausedByPhone = newRate <= 0f;
             return;
         }
         rate = newRate;
@@ -414,14 +430,17 @@ public final class HlsPlayer {
     /** {duration, position, rate, stillPlaying (1/0), buffering (1/0)} for the iPhone. */
     public double[] playbackInfo() {
         if (active && ended && endedAtMs != 0
-                && System.currentTimeMillis() - endedAtMs < END_GRACE_MS) {
+                && System.currentTimeMillis() - endedAtMs < END_WAIT_MS) {
             // Reached the end normally: report "playing, at the very end". Reporting "paused at
             // the end" made the iPhone think playback had stalled; it kept sending play
             // (rate=1) and never finished the item, so apps could not autoplay the next video.
             // Report slightly *past* the end: the iPhone's idea of the length can be a fraction
             // of a second longer than ExoPlayer's, and if the reported position stays below it
             // the phone never finishes the item (no "watched" mark, no autoplay).
-            return new double[] {durationSec, durationSec + END_OVERSHOOT_SEC, 1, 1, 0};
+            // Once the phone has paused at the end, report paused so both sides agree. The
+            // session stays open (no "finished"/-1) so the app can send the next video.
+            return new double[] {durationSec, durationSec + END_OVERSHOOT_SEC,
+                    endPausedByPhone ? 0 : 1, 1, 0};
         }
         boolean playing = active && !ended;
         return new double[] {durationSec, positionSec, rate, playing ? 1 : 0, buffering ? 1 : 0};
@@ -477,10 +496,13 @@ public final class HlsPlayer {
                     positionSec = durationSec;
                 }
                 endedAtMs = System.currentTimeMillis();
+                endPausedByPhone = false;
                 ended = true;
                 if (detached) {
                     // nobody on the phone will send the next video: go back to the start screen
                     stop();
+                } else {
+                    listener.onAirPlayVideoEnded();
                 }
             }
         }

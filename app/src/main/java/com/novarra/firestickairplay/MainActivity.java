@@ -533,6 +533,12 @@ public class MainActivity extends Activity implements AirPlayServer.Listener,
     }
 
     @Override
+    public void onAirPlayVideoEnded() {
+        server.addActivity("TV: video finished, waiting for the next one");
+        showToast(getString(R.string.video_ended_waiting), 30_000);
+    }
+
+    @Override
     public void onAirPlaySubtitleOffIgnored() {
         server.addActivity("TV: kept subtitles on (ignored automatic off at video start)");
     }
