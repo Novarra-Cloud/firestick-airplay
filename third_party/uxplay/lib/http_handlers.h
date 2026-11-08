@@ -446,6 +446,10 @@ http_handler_playback_info(raop_conn_t *conn, http_request_t *request, http_resp
     time_range_t time_ranges_loaded[1];
     time_ranges_loaded[0].start = playback_info.position;
     time_ranges_loaded[0].duration = playback_info.duration - playback_info.position;
+    if (time_ranges_loaded[0].duration < 0.0) {
+        /* FIRESTICK-AIRPLAY: position may be reported just past the end */
+        time_ranges_loaded[0].duration = 0.0;
+    }
     playback_info.loadedTimeRanges = (void *) &time_ranges_loaded;
 
     playback_info.num_seekable_time_ranges = 1;

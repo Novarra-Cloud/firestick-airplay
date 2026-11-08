@@ -126,6 +126,7 @@ public final class HlsPlayer {
      * (autoplay). Only then is "finished" (-1) reported.
      */
     private static final long END_GRACE_MS = 20_000;
+    private static final double END_OVERSHOOT_SEC = 1.0;
     private volatile boolean buffering;
     private volatile double durationSec;
     private volatile double positionSec;
@@ -417,7 +418,10 @@ public final class HlsPlayer {
             // Reached the end normally: report "playing, at the very end". Reporting "paused at
             // the end" made the iPhone think playback had stalled; it kept sending play
             // (rate=1) and never finished the item, so apps could not autoplay the next video.
-            return new double[] {durationSec, durationSec, 1, 1, 0};
+            // Report slightly *past* the end: the iPhone's idea of the length can be a fraction
+            // of a second longer than ExoPlayer's, and if the reported position stays below it
+            // the phone never finishes the item (no "watched" mark, no autoplay).
+            return new double[] {durationSec, durationSec + END_OVERSHOOT_SEC, 1, 1, 0};
         }
         boolean playing = active && !ended;
         return new double[] {durationSec, positionSec, rate, playing ? 1 : 0, buffering ? 1 : 0};
